@@ -1,11 +1,11 @@
-{-# LANGUAGE BangPatterns, TupleSections, FlexibleInstances #-}
+{-# LANGUAGE BangPatterns, TupleSections, FlexibleInstances, OverloadedStrings #-}
 module Main (main) where
 
 import Control.Applicative
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as LBC
 import Data.Attoparsec.Lazy hiding (take, takeTill, takeWhile)
-import Data.Attoparsec.Char8 (char, char8, takeWhile, takeTill, isDigit, isAlpha_ascii)
+import Data.Attoparsec.Char8 (peekChar, anyChar, char, char8, takeWhile, takeTill, isDigit, isAlpha_ascii)
 import Prelude hiding (takeWhile)
 import Control.Monad (liftM, forM_, forM, when)
 import Data.Time.Clock
@@ -15,24 +15,28 @@ import Data.List (foldl', intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import System.IO
-import System.Cmd (system)
-import System.Directory (removeFile)
 import Network.URI (parseURI)
-import Text.Printf (printf)
 import GHC.Real (Ratio((:%)))
-import Data.Network.Address
 import Debug.Trace
+import Data.Char (ord)
 
 
-data Host = Host4 !IPv4
-          | Host6 !IPv6
-            deriving (Show, Eq, Ord)
-data Request = Request !BC.ByteString !Int !Day !BC.ByteString !Host !(Maybe Integer)
-             deriving (Show)
+data DayTime = DayTime Int Int Int
+             deriving (Show, Ord, Eq)
+
+data Request = Request {
+     reqMethod :: !BC.ByteString,
+     reqCode :: !Int, 
+     reqDate :: !Day, 
+     reqTime :: !DayTime,
+     reqPath :: !BC.ByteString, 
+     reqHost :: !BC.ByteString, 
+     reqSize :: !(Maybe Int)
+  } deriving (Show)
 
 parseLine :: LBC.ByteString -> Result Request
 parseLine = {-# SCC "parse" #-} parse line
-    where line = do host <- {-# SCC "wordHost" #-} host
+    where line = do host <- {-# SCC "wordHost" #-} word
                     space
                     ident <- {-# SCC "wordIdent" #-} word
                     space
@@ -40,15 +44,18 @@ parseLine = {-# SCC "parse" #-} parse line
                     space
                     char '['
                     date <- {-# SCC "date" #-} date
-                    takeTill (== '"')
-                    char '"'
+                    char ':'
+                    time <- {-# SCC "time" #-} time
+                    -- ignore TZ info
+                    takeTill (== ']')
+                    string "] \""
                     method <- {-# SCC "wordMethod" #-} word
                     space
                     path <- {-# SCC "wordPath" #-} word
                     space
                     ver <- {-# SCC "wordVer" #-} word
                     space
-                    code <- {-# SCC "wordCode" #-} num'
+                    code <- {-# SCC "wordCode" #-} num
                     space
                     mSize <- {-# SCC "wordSize" #-} 
                              (pure Nothing <* char '-') <|>
@@ -62,24 +69,23 @@ parseLine = {-# SCC "parse" #-} parse line
                     userAgent <- {-# SCC "userAgent" #-} takeTill (== '"')
                     char '"'
                     eol
-                    return $ {-# SCC "Request" #-} Request method code date path host mSize
+                    return $ {-# SCC "Request" #-} Request method code date time path host mSize
           space = char ' '
           word = takeTill (== ' ')
-          num = (maybe 0 fst . BC.readInteger) `liftM` takeWhile isDigit
-          num' = (maybe 0 fst . BC.readInt) `liftM` takeWhile isDigit
-          host = do h <- BC.unpack `liftM` word
-                    case ':' `elem` h of
-                      False ->
-                        return $ Host4 $ readAddress h
-                      True ->
-                        return $ Host6 $ readAddress h
-
-          date = do day <- num'
+          num = let loop !n =
+                      do mC <- peekChar
+                         case mC of
+                           Just c
+                             | c >= '0' && c <= '9' ->
+                               anyChar *> loop (n * 10 + ord c - ord '0')
+                           _ ->
+                             return n
+                in loop 0
+          date = do day <- num
                     char '/'
                     mon <- month
                     char '/'
-                    year <- num
-                    char ':'
+                    year <- fromIntegral <$> num
                     return $ fromGregorian year mon day
           month = fromMaybe (error "Invalid month") <$>
                   flip Map.lookup months <$> 
@@ -91,6 +97,12 @@ parseLine = {-# SCC "parse" #-} parse line
                           "Apr", "May", "Jun",
                           "Jul", "Aug", "Sep",
                           "Oct", "Nov", "Dec"]
+          time = DayTime <$>
+                 num <*
+                 char ':' <*>
+                 num <*
+                 char ':' <*>
+                 num
           eol = char '\n'
                          
 parseFile :: LBC.ByteString -> [Request]
@@ -105,8 +117,10 @@ parseFile s
           let rest' = LBC.dropWhile (/= '\n') rest
           in parseFile $ LBC.tail rest'
 
+-- filter GET, 200+206, normalize path
+
 main :: IO ()
 main = LBC.getContents >>=
-       print . foldl' (\sum (Request _ _ _ _ _ mSize) -> 
-                           sum + fromMaybe 0 mSize
+       print . foldl' (\sum req -> 
+                           sum + fromMaybe 0 (reqSize req)
                       ) 0 . parseFile
