@@ -7,7 +7,7 @@ import qualified Data.ByteString.Lazy.Char8 as LBC
 import Data.Attoparsec.Lazy hiding (take, takeTill, takeWhile)
 import Data.Attoparsec.Char8 (peekChar, anyChar, char, char8, takeWhile, takeTill, isDigit, isAlpha_ascii)
 import Prelude hiding (takeWhile)
-import Control.Monad (liftM, foldM_, when)
+import Control.Monad (liftM, foldM, when)
 import Data.Time.Clock
 import Data.Maybe (fromMaybe)
 import Data.List (foldl', intercalate)
@@ -141,34 +141,59 @@ parseFile s
           let rest' = LBC.dropWhile (/= '\n') rest
           in parseFile $ LBC.tail rest'
 
+
+recordRequest :: DB.DB -> Request -> ResourceT IO Bool
+recordRequest db req =
+    do let key = BC.concat
+                 [reqPath req,
+                  BC.singleton '\n',
+                  BC.pack $ show $ reqDate req,
+                  BC.singleton '\n',
+                  BC.pack $ show $ reqTime req,
+                  BC.singleton '\n',
+                  reqHost req,
+                  BC.singleton '\n',
+                  reqUserAgent req
+                 ]
+       mBuf <- DB.get db def key
+       let oldSizes =
+               case mBuf of
+                 Nothing -> 
+                     []
+                 Just buf ->
+                     map (read . BC.unpack) $
+                     BC.words buf
+           Just size = reqSize req
+           existing = size `elem` oldSizes
+           
+       when (not existing) $
+            do let buf = BC.unwords $
+                         map (BC.pack . show) $
+                         size : oldSizes
+               DB.put db def key buf
+       return $ not existing
+
 -- TODO: normalize path
 
 main :: IO ()
 main = 
     runResourceT $
     do db <- DB.open "state" $ DB.defaultOptions { DB.createIfMissing = True }
-       parseFile <$> 
-                 lift LBC.getContents >>=
-                 foldM_ 
-                 (\_ req ->
-                      case reqSize req of
-                        Just size 
-                            | reqMethod req == "GET" &&
-                              reqCode req >= 200 && 
-                              reqCode req < 300 ->
-                                  do let key = BC.concat
-                                               [reqPath req,
-                                                BC.singleton '\n',
-                                                BC.pack $ show $ reqDate req,
-                                                BC.singleton '\n',
-                                                BC.pack $ show $ reqTime req,
-                                                BC.singleton '\n',
-                                                reqHost req]
-                                         value = BC.concat
-                                                 [BC.pack $ show size, 
-                                                  BC.singleton '\n',
-                                                  reqUserAgent req]
-                                     DB.put db def key value
-                        _ ->
-                            return ()
-                 ) ()
+       (added, total) <- parseFile <$> lift LBC.getContents >>=
+                foldM 
+                (\(!added, !total) req ->
+                     case reqSize req of
+                       Just _size 
+                           | reqMethod req == "GET" &&
+                             reqCode req >= 200 && 
+                             reqCode req < 300 ->
+                                 do wasAdded <- recordRequest db req
+                                    case wasAdded of
+                                      True ->
+                                          return (added + 1, total + 1)
+                                      False ->
+                                          return (added, total + 1)
+                       _ ->
+                           return (added, total)
+                ) (0 :: Int, 0 :: Int)
+       lift $ putStrLn $ "Processed " ++ show added ++ "/" ++ show total ++ " records"
