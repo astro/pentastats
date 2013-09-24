@@ -4,9 +4,9 @@ module Main (main) where
 import Control.Applicative
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as LBC
-import Data.Attoparsec.Lazy hiding (take)
+import Data.Attoparsec.Lazy hiding (take, takeTill, takeWhile)
+import Data.Attoparsec.Char8 (char, char8, takeWhile, takeTill, isDigit, isAlpha_ascii)
 import Prelude hiding (takeWhile)
-import Data.Char (isDigit, isAlpha)
 import Control.Monad (liftM, forM_, forM, when)
 import Data.Time.Clock
 import Data.Time.Calendar (Day, addDays, fromGregorian)
@@ -19,7 +19,6 @@ import System.Cmd (system)
 import System.Directory (removeFile)
 import Network.URI (parseURI)
 import Text.Printf (printf)
-import Data.ByteString.Internal (w2c, c2w)
 import GHC.Real (Ratio((:%)))
 import Data.Network.Address
 import Debug.Trace
@@ -41,7 +40,7 @@ parseLine = {-# SCC "parse" #-} parse line
                     space
                     char '['
                     date <- {-# SCC "date" #-} date
-                    takeWhile ((/= '"') . w2c)
+                    takeTill (== '"')
                     char '"'
                     method <- {-# SCC "wordMethod" #-} word
                     space
@@ -56,19 +55,18 @@ parseLine = {-# SCC "parse" #-} parse line
                              (Just <$> num)
                     space
                     char '"'
-                    referrer <- {-# SCC "referrer" #-} takeWhile ((/= '"') . w2c)
+                    referrer <- {-# SCC "referrer" #-} takeTill (== '"')
                     char '"'
                     space
                     char '"'
-                    userAgent <- {-# SCC "userAgent" #-} takeWhile ((/= '"') . w2c)
+                    userAgent <- {-# SCC "userAgent" #-} takeTill (== '"')
                     char '"'
                     eol
                     return $ {-# SCC "Request" #-} Request method code date path host mSize
-          char = word8 . c2w
           space = char ' '
-          word = takeWhile $ (/= ' ') . w2c
-          num = (maybe 0 fst . BC.readInteger) `liftM` takeWhile (isDigit . w2c)
-          num' = (maybe 0 fst . BC.readInt) `liftM` takeWhile (isDigit . w2c)
+          word = takeTill (== ' ')
+          num = (maybe 0 fst . BC.readInteger) `liftM` takeWhile isDigit
+          num' = (maybe 0 fst . BC.readInt) `liftM` takeWhile isDigit
           host = do h <- BC.unpack `liftM` word
                     case ':' `elem` h of
                       False ->
@@ -85,7 +83,7 @@ parseLine = {-# SCC "parse" #-} parse line
                     return $ fromGregorian year mon day
           month = fromMaybe (error "Invalid month") <$>
                   flip Map.lookup months <$> 
-                  takeWhile (isAlpha . w2c)
+                  takeWhile isAlpha_ascii
             where
               months = Map.fromList $ zip months' [1..]
               months' = map BC.pack months''
@@ -96,14 +94,19 @@ parseLine = {-# SCC "parse" #-} parse line
           eol = char '\n'
                          
 parseFile :: LBC.ByteString -> [Request]
-parseFile s = 
+parseFile s 
+  | LBC.null s = []
+  | otherwise =
     case parseLine s of
       Done rest req ->
           req : parseFile rest
       Fail rest _ errMsg ->
           trace errMsg $
-          parseFile $ LBC.tail rest
+          let rest' = LBC.dropWhile (/= '\n') rest
+          in parseFile $ LBC.tail rest'
 
 main :: IO ()
 main = LBC.getContents >>=
-       mapM_ print . parseFile
+       print . foldl' (\sum (Request _ _ _ _ _ mSize) -> 
+                           sum + fromMaybe 0 mSize
+                      ) 0 . parseFile
