@@ -11,8 +11,7 @@ import Control.Monad (liftM, foldM, when)
 import Data.Time.Clock
 import Data.Maybe (fromMaybe)
 import Data.List (foldl', intercalate)
-import Data.Map (Map)
-import qualified Data.Map as Map
+import qualified Data.HashMap.Strict as Map
 import System.IO
 import Network.URI (parseURI)
 import GHC.Real (Ratio((:%)))
@@ -142,58 +141,70 @@ parseFile s
           in parseFile $ LBC.tail rest'
 
 
-recordRequest :: DB.DB -> Request -> ResourceT IO Bool
-recordRequest db req =
-    do let key = BC.concat
-                 [reqPath req,
-                  BC.singleton '\n',
-                  BC.pack $ show $ reqDate req,
-                  BC.singleton '\n',
-                  BC.pack $ show $ reqTime req,
-                  BC.singleton '\n',
-                  reqHost req,
-                  BC.singleton '\n',
-                  reqUserAgent req
-                 ]
-       mBuf <- DB.get db def key
-       let oldSizes =
-               case mBuf of
-                 Nothing -> 
-                     []
-                 Just buf ->
-                     map (read . BC.unpack) $
-                     BC.words buf
-           Just size = reqSize req
-           existing = size `elem` oldSizes
-           
-       when (not existing) $
-            do let buf = BC.unwords $
-                         map (BC.pack . show) $
-                         size : oldSizes
-               DB.put db def key buf
-       return $ not existing
+reqKey :: Request -> BC.ByteString
+reqKey req = BC.concat
+             [reqPath req,
+              BC.singleton '\n',
+              BC.pack $ show $ reqDate req,
+              BC.singleton '\n',
+              BC.pack $ show $ reqTime req,
+              BC.singleton '\n',
+              reqHost req,
+              BC.singleton '\n',
+              reqUserAgent req
+             ]
 
 -- TODO: normalize path
+
+groupByDateTime :: [Request] -> [[Request]]
+groupByDateTime [] = []
+groupByDateTime (req : reqs) =
+    let date = reqDate req
+        time = reqTime req
+        (reqs', reqs'') = break
+                          (\req' ->
+                               time /= reqTime req' ||
+                               date /= reqDate req'
+                          ) reqs
+    in (req : reqs') : groupByDateTime reqs''
+
+
+-- Returns amount of keys written
+writeReqs :: DB.DB -> [Request] -> ResourceT IO Int
+writeReqs db reqs =
+    do let keysValues =
+               Map.toList $
+               foldl' (\map req ->
+                           case reqSize req of
+                             Just size 
+                                 | size > 0 ->
+                                     Map.insertWith (+) 
+                                     (reqKey req) size map
+                             _ ->
+                                 map
+                      ) Map.empty reqs
+           ops = map (\(key, value) ->
+                          DB.Put key $ BC.pack $ show value
+                     ) keysValues
+       DB.write db def ops
+       return $ length ops
+
 
 main :: IO ()
 main = 
     runResourceT $
     do db <- DB.open "state" $ DB.defaultOptions { DB.createIfMissing = True }
-       (added, total) <- parseFile <$> lift LBC.getContents >>=
+       (lines, records) <- parseFile <$> lift LBC.getContents >>=
                 foldM 
-                (\(!added, !total) req ->
-                     case reqSize req of
-                       Just _size 
-                           | reqMethod req == "GET" &&
-                             reqCode req >= 200 && 
-                             reqCode req < 300 ->
-                                 do wasAdded <- recordRequest db req
-                                    case wasAdded of
-                                      True ->
-                                          return (added + 1, total + 1)
-                                      False ->
-                                          return (added, total + 1)
-                       _ ->
-                           return (added, total)
-                ) (0 :: Int, 0 :: Int)
-       lift $ putStrLn $ "Processed " ++ show added ++ "/" ++ show total ++ " records"
+                (\(!lines, !records) reqs ->
+                     do let lines' = length reqs
+                        records' <- writeReqs db reqs
+                        return (lines + lines', records + records')
+                ) (0 :: Int, 0 :: Int) .
+                groupByDateTime .
+                filter (\req ->
+                            reqMethod req == "GET" &&
+                            reqCode req >= 200 && 
+                            reqCode req < 300 
+                       )
+       lift $ putStrLn $ "Processed " ++ show lines ++ " lines into " ++ show records ++ " records"
