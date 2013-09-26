@@ -59,8 +59,8 @@ trackStates' mPath mDate mHost =
          Just host | mHost /= Just host -> yield $ HostStart host
          _ -> return ()
 
-       case readInt =<< BC.unpack <$> snd <$> mKeyValue of
-         Just size -> yield $ Size size
+       case safeConvert <$> snd <$> mKeyValue of
+         Just (Right (Value size _)) -> yield $ Size size
          _ -> return ()
          
        trackStates' (kPath <$> mKey)

@@ -130,44 +130,46 @@ reqKey req = Key
              (reqHost req)
              (reqUserAgent req)
 
--- TODO: normalize path
+group :: [Request] -> [[Request]]
+group [] = []
+group (req : reqs) =
+    let k = reqKey req
+        (reqs', reqs'') = break ((k /=) . reqKey) reqs
+    in (req : reqs') : group reqs''
 
-groupByDate :: [Request] -> [[Request]]
-groupByDate [] = []
-groupByDate (req : reqs) =
-    let date = reqDate req
-        (reqs', reqs'') = break
-                          (\req' ->
-                               date /= reqDate req'
-                          ) reqs
-    in (req : reqs') : groupByDate reqs''
 
+-- TODO: could do more
+normalizePaths :: [Request] -> [Request]
+normalizePaths = map $ \req ->
+                 req { reqPath = BC.takeWhile (/= '?') $ reqPath req }
 
 -- Returns amount of keys written
 writeReqs :: DB.DB -> BC.ByteString -> [Request] -> ResourceT IO Int
 writeReqs db token reqs =
-    do let keysValues =
-               Map.toList $
-               foldl' (\map req ->
-                           case reqSize req of
-                             Just size 
-                                 | size > 0 ->
-                                     let value = Value size token
-                                     in Map.insertWith (++) 
-                                        (convert $ reqKey req) [value] map
-                             _ ->
-                                 map
-                      ) Map.empty reqs
-       forM_ keysValues $ \(key, values) ->
-           do mOldValues <- (safeConvert <$>) <$> DB.get db def key
-              let oldValues = Set.fromList $
-                              case mOldValues of
-                                Just (Right (Values values)) -> values
-                                _ -> []
-                  newValues = filter (not . (`Set.member` oldValues)) values
-                  values' = Values $ newValues ++ Set.toList oldValues
-              DB.put db def key $ convert $ values'
-       return $ length keysValues
+    do let key = convert $ reqKey $ head reqs
+       mOldValues <- (safeConvert <$>) <$> DB.get db def key
+       let oldValues = case mOldValues of
+                         Just (Right (Values values)) -> 
+                             foldl' (\map (Value size token') ->
+                                         Map.insertWith (++) size [token'] map
+                                    ) Map.empty values
+                         _ -> Map.empty
+           newValues = map (\req ->
+                                Value (fromMaybe 0 $ reqSize req) token
+                           ) reqs
+           merge newTokens oldTokens =
+               newTokens ++ filter (not . (`elem` newTokens)) oldTokens
+           values = Values $
+                    concatMap (\(size, tokens) ->
+                                   Value size <$> tokens
+                              ) $
+                    Map.toList $
+                    foldl' (\map value ->
+                                Map.insertWith merge (vSize value) [vToken value] map
+                           ) oldValues newValues
+                       
+       DB.put db def key $ convert $ values
+       return 1
 
 
 main :: IO ()
@@ -182,7 +184,8 @@ main =
                         records' <- writeReqs db token reqs
                         return (lines + lines', records + records')
                 ) (0 :: Int, 0 :: Int) .
-                groupByDate .
+                group .
+                normalizePaths .
                 filter (\req ->
                             reqMethod req == "GET" &&
                             reqCode req >= 200 && 
