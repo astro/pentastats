@@ -24,15 +24,13 @@ data Grouped = PathStart BC.ByteString
              | PathEnd BC.ByteString
                deriving (Show, Eq)
 
-trackStates :: Monad m =>
-               Conduit (BC.ByteString, BC.ByteString) m Grouped
+trackStates :: Conduit (BC.ByteString, BC.ByteString) (ResourceT IO) Grouped
 trackStates = trackStates' Nothing Nothing Nothing
     
-trackStates' :: Monad m =>
-                Maybe BC.ByteString ->
+trackStates' :: Maybe BC.ByteString ->
                 Maybe Date ->
                 Maybe BC.ByteString ->
-                Conduit (BC.ByteString, BC.ByteString) m Grouped
+                Conduit (BC.ByteString, BC.ByteString) (ResourceT IO) Grouped
 trackStates' mPath mDate mHost =
     do mKeyValue <- await
        let mKey = safeConvert <$> fst <$> mKeyValue >>= \lr ->
@@ -40,10 +38,13 @@ trackStates' mPath mDate mHost =
                     Right key -> Just key
                     Left _ -> Nothing
        case mHost of
-         Just host | mHost /= (kHost <$> mKey) -> yield $ HostEnd host
+         Just host | mHost /= (kHost <$> mKey) ||
+                     mDate /= (kDate <$> mKey) || 
+                     mPath /= (kPath <$> mKey) -> yield $ HostEnd host
          _ -> return ()
        case mDate of
-         Just date | mDate /= (kDate <$> mKey) -> yield $ DateEnd date
+         Just date | mDate /= (kDate <$> mKey) || 
+                     mPath /= (kPath <$> mKey) -> yield $ DateEnd date
          _ -> return ()
        case mPath of
          Just path | mPath /= (kPath <$> mKey) -> yield $ PathEnd path
@@ -53,26 +54,37 @@ trackStates' mPath mDate mHost =
          Just path | mPath /= Just path -> yield $ PathStart path
          _ -> return ()
        case kDate <$> mKey of
-         Just date | mDate /= Just date -> yield $ DateStart date
+         Just date | mDate /= Just date ||
+                     mPath /= (kPath <$> mKey) -> yield $ DateStart date
          _ -> return ()
        case kHost <$> mKey of
-         Just host | mHost /= Just host -> yield $ HostStart host
+         Just host | mHost /= Just host ||
+                     mDate /= (kDate <$> mKey) ||
+                     mPath /= (kPath <$> mKey) -> yield $ HostStart host
          _ -> return ()
 
        case safeConvert <$> snd <$> mKeyValue of
-         Just (Right (Value size _)) -> yield $ Size size
+         Just (Right (Value size _)) -> 
+             --liftIO (putStrLn $ show mKey ++ " " ++ show size) >>
+             yield (Size size)
          _ -> return ()
          
-       trackStates' (kPath <$> mKey)
-                    (kDate <$> mKey)
-                    (kHost <$> mKey)
+       case mKeyValue of
+         Just _ ->
+             trackStates' (kPath <$> mKey)
+                      (kDate <$> mKey)
+                      (kHost <$> mKey)
+         _ ->
+             return ()
 
 stats :: Sink Grouped (ResourceT IO) ()
 stats = CL.foldM (\(!days, !size) g ->
+                      --liftIO (print g) >>
                       case g of
                         PathStart _ ->
                             return (0, 0)
                         Size size' ->
+                            --liftIO (putStrLn $ "Size: " ++ show size') >>
                             return (days, size + size')
                         DateStart _ ->
                             return (days + 1, size)

@@ -141,34 +141,32 @@ group (req : reqs) =
 -- TODO: could do more
 normalizePaths :: [Request] -> [Request]
 normalizePaths = map $ \req ->
-                 req { reqPath = BC.takeWhile (/= '?') $ reqPath req }
+                 req { reqPath = rmDots $ BC.takeWhile (/= '?') $ reqPath req }
+  where rmDots b
+          | BC.length b >= 2 &&
+            BC.take 2 b == "//" = rmDots $ BC.drop 1 b
+          | BC.length b >= 4 &&
+            BC.take 4 b == "/../" = rmDots $ BC.drop 3 b
+          | BC.length b >= 3 &&
+            BC.take 3 b == "/./" = rmDots $ BC.drop 2 b
+          | otherwise = b
 
 -- Returns amount of keys written
 writeReqs :: DB.DB -> BC.ByteString -> [Request] -> ResourceT IO Int
 writeReqs db token reqs =
     do let key = convert $ reqKey $ head reqs
-       mOldValues <- (safeConvert <$>) <$> DB.get db def key
-       let oldValues = case mOldValues of
-                         Just (Right (Values values)) -> 
-                             foldl' (\map (Value size token') ->
-                                         Map.insertWith (++) size [token'] map
-                                    ) Map.empty values
-                         _ -> Map.empty
-           newValues = map (\req ->
-                                Value (fromMaybe 0 $ reqSize req) token
-                           ) reqs
-           merge newTokens oldTokens =
-               newTokens ++ filter (not . (`elem` newTokens)) oldTokens
-           values = Values $
-                    concatMap (\(size, tokens) ->
-                                   Value size <$> tokens
-                              ) $
-                    Map.toList $
-                    foldl' (\map value ->
-                                Map.insertWith merge (vSize value) [vToken value] map
-                           ) oldValues newValues
-                       
-       DB.put db def key $ convert $ values
+       mOldValue <- (safeConvert <$>) <$> DB.get db def key
+       let reqsSize = sum $ map (fromMaybe 0 . reqSize) reqs
+           newValue = case mOldValue of
+                         Just (Right value)
+                           | vToken value == token ->
+                             -- Was modified during this session, add:
+                             value { vSize = vSize value + reqsSize }
+                         _ ->
+                           -- First time seen
+                           Value { vSize = reqsSize,
+                                   vToken = token }
+       DB.put db def key $ convert $ newValue
        return 1
 
 
@@ -177,13 +175,15 @@ main =
     runResourceT $
     do token <- BC.pack <$> show <$> liftIO getClockTime
        db <- DB.open "state" $ DB.defaultOptions { DB.createIfMissing = True }
-       (lines, records) <- parseFile <$> lift LBC.getContents >>=
+       (lines, records, bytes) <- parseFile <$> lift LBC.getContents >>=
                 foldM 
-                (\(!lines, !records) reqs ->
+                (\(!lines, !records, !bytes) reqs ->
                      do let lines' = length reqs
+                            bytes' = sum $ map (fromMaybe 0 . reqSize) reqs
+                        --liftIO $ putStrLn $ "reqs: " ++ show reqs
                         records' <- writeReqs db token reqs
-                        return (lines + lines', records + records')
-                ) (0 :: Int, 0 :: Int) .
+                        return (lines + lines', records + records', bytes + bytes')
+                ) (0 :: Int, 0 :: Int, 0 :: Int) .
                 group .
                 normalizePaths .
                 filter (\req ->
@@ -191,4 +191,6 @@ main =
                             reqCode req >= 200 && 
                             reqCode req < 300 
                        )
-       lift $ putStrLn $ "Processed " ++ show lines ++ " lines into " ++ show records ++ " records"
+       lift $ putStrLn $ "Processed " ++ show lines ++ 
+         " lines into " ++ show records ++ 
+         " records (" ++ show bytes ++ " bytes)"

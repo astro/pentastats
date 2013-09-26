@@ -13,13 +13,17 @@ padLeft xs l padding
     | otherwise = padLeft (padding ++ xs) l padding
 
 readInt :: String -> Maybe Int
-readInt "" = Nothing
-readInt (x : xs)
+readInt = readInt' 0
+
+readInt' :: Int -> String -> Maybe Int
+readInt' _ "" = Nothing
+readInt' r (x : xs)
     | isDigit x = let i = ord x - ord '0'
-                  in seq i $
+                      i' = r * 10 + i
+                  in seq i' $
                      case xs of
-                       "" -> Just i
-                       _:_ -> ((i * 10) +) <$> readInt xs
+                       "" -> Just i'
+                       _:_ -> readInt' i' xs
     | otherwise = Nothing
 
 data Date = Date Int Int Int
@@ -108,19 +112,10 @@ instance Convertible Key BC.ByteString where
                               kHost key,
                               kUserAgent key]
 
-newtype Values = Values [Value]
-
-instance Convertible BC.ByteString Values where
-    safeConvert = (Values <$>) . mapM safeConvert . BC.lines
-
-instance Convertible Values BC.ByteString where
-    safeConvert (Values values) =
-        BC.unlines <$> mapM safeConvert values
-
 data Value = Value {
       vSize :: Int,
       vToken :: BC.ByteString
-    } deriving (Eq)
+    } deriving (Show, Eq)
 
 instance Ord Value where
     compare v1 v2 = 
@@ -131,9 +126,9 @@ instance Ord Value where
 instance Convertible BC.ByteString Value where
     safeConvert b =
         let (b', b'') = BC.break (== ' ') b
-        in case readInt $ BC.unpack b' of
-             Just size -> Right $ Value size b''
-             Nothing -> fail "Invalid value"
+        in case (BC.head b'', readInt $ BC.unpack b') of
+             (' ', Just size) -> Right $ Value size $ BC.tail b''
+             (_, Nothing) -> fail "Invalid value"
 
 instance Convertible Value BC.ByteString where
     safeConvert (Value size token) =
