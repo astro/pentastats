@@ -22,29 +22,8 @@ import Data.Default (def)
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans
 
+import Shared
 
-padLeft :: [a] -> Int -> [a] -> [a]
-padLeft xs l padding
-    | length xs >= l = xs
-    | otherwise = padLeft (padding ++ xs) l padding
-
-data Date = Date Int Int Int
-            deriving (Ord, Eq)
-                     
-instance Show Date where
-    show (Date y m d) = intercalate "-"
-                        [show y,
-                         padLeft (show m) 2 "0",
-                         padLeft (show d) 2 "0"]
-                     
-data DayTime = DayTime Int Int Int
-             deriving (Ord, Eq)
-
-instance Show DayTime where
-    show (DayTime h m s) = intercalate ":"
-                           [padLeft (show h) 2 "0",
-                            padLeft (show m) 2 "0",
-                            padLeft (show s) 2 "0"]
 
 data Request = Request {
      reqMethod :: !BC.ByteString,
