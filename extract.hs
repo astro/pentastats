@@ -17,26 +17,23 @@ import SourceIter
 
 data Grouped = PathStart BC.ByteString
              | DateStart Date
-             | TimeStart DayTime
              | HostStart BC.ByteString
              | Size Int
              | HostEnd BC.ByteString
-             | TimeEnd DayTime
              | DateEnd Date
              | PathEnd BC.ByteString
                deriving (Show, Eq)
 
 trackStates :: Monad m =>
                Conduit (BC.ByteString, BC.ByteString) m Grouped
-trackStates = trackStates' Nothing Nothing Nothing Nothing
+trackStates = trackStates' Nothing Nothing Nothing
     
 trackStates' :: Monad m =>
                 Maybe BC.ByteString ->
                 Maybe Date ->
-                Maybe DayTime ->
                 Maybe BC.ByteString ->
                 Conduit (BC.ByteString, BC.ByteString) m Grouped
-trackStates' mPath mDate mTime mHost =
+trackStates' mPath mDate mHost =
     do mKeyValue <- await
        let mKey = safeConvert <$> fst <$> mKeyValue >>= \lr ->
                   case lr of
@@ -44,9 +41,6 @@ trackStates' mPath mDate mTime mHost =
                     Left _ -> Nothing
        case mHost of
          Just host | mHost /= (kHost <$> mKey) -> yield $ HostEnd host
-         _ -> return ()
-       case mTime of
-         Just time | mTime /= (kTime <$> mKey) -> yield $ TimeEnd time
          _ -> return ()
        case mDate of
          Just date | mDate /= (kDate <$> mKey) -> yield $ DateEnd date
@@ -61,9 +55,6 @@ trackStates' mPath mDate mTime mHost =
        case kDate <$> mKey of
          Just date | mDate /= Just date -> yield $ DateStart date
          _ -> return ()
-       case kTime <$> mKey of
-         Just time | mTime /= Just time -> yield $ TimeStart time
-         _ -> return ()
        case kHost <$> mKey of
          Just host | mHost /= Just host -> yield $ HostStart host
          _ -> return ()
@@ -74,7 +65,6 @@ trackStates' mPath mDate mTime mHost =
          
        trackStates' (kPath <$> mKey)
                     (kDate <$> mKey)
-                    (kTime <$> mKey)
                     (kHost <$> mKey)
 
 stats :: Sink Grouped (ResourceT IO) ()
@@ -104,4 +94,3 @@ main =
        iter <- DB.iterOpen db def
        DB.iterFirst iter
        sourceIter iter $$ trackStates =$ stats
-       

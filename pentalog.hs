@@ -7,7 +7,7 @@ import qualified Data.ByteString.Lazy.Char8 as LBC
 import Data.Attoparsec.Lazy hiding (take, takeTill, takeWhile)
 import Data.Attoparsec.Char8 (peekChar, anyChar, char, char8, takeWhile, takeTill, isDigit, isAlpha_ascii)
 import Prelude hiding (takeWhile)
-import Control.Monad (liftM, foldM, when)
+import Control.Monad
 import Data.Time.Clock
 import Data.Maybe (fromMaybe)
 import Data.List (foldl', intercalate)
@@ -21,6 +21,9 @@ import qualified Database.LevelDB as DB
 import Data.Default (def)
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans
+import Data.Convertible
+import System.Time (getClockTime)
+import qualified Data.Set as Set
 
 import Shared
 
@@ -120,67 +123,66 @@ parseFile s
           in parseFile $ LBC.tail rest'
 
 
-reqKey :: Request -> BC.ByteString
-reqKey req = BC.concat
-             [reqPath req,
-              BC.singleton '\n',
-              BC.pack $ show $ reqDate req,
-              BC.singleton '\n',
-              BC.pack $ show $ reqTime req,
-              BC.singleton '\n',
-              reqHost req,
-              BC.singleton '\n',
-              reqUserAgent req
-             ]
+reqKey :: Request -> Key
+reqKey req = Key
+             (reqPath req)
+             (reqDate req)
+             (reqHost req)
+             (reqUserAgent req)
 
 -- TODO: normalize path
 
-groupByDateTime :: [Request] -> [[Request]]
-groupByDateTime [] = []
-groupByDateTime (req : reqs) =
+groupByDate :: [Request] -> [[Request]]
+groupByDate [] = []
+groupByDate (req : reqs) =
     let date = reqDate req
-        time = reqTime req
         (reqs', reqs'') = break
                           (\req' ->
-                               time /= reqTime req' ||
                                date /= reqDate req'
                           ) reqs
-    in (req : reqs') : groupByDateTime reqs''
+    in (req : reqs') : groupByDate reqs''
 
 
 -- Returns amount of keys written
-writeReqs :: DB.DB -> [Request] -> ResourceT IO Int
-writeReqs db reqs =
+writeReqs :: DB.DB -> BC.ByteString -> [Request] -> ResourceT IO Int
+writeReqs db token reqs =
     do let keysValues =
                Map.toList $
                foldl' (\map req ->
                            case reqSize req of
                              Just size 
                                  | size > 0 ->
-                                     Map.insertWith (+) 
-                                     (reqKey req) size map
+                                     let value = Value size token
+                                     in Map.insertWith (++) 
+                                        (convert $ reqKey req) [value] map
                              _ ->
                                  map
                       ) Map.empty reqs
-           ops = map (\(key, value) ->
-                          DB.Put key $ BC.pack $ show value
-                     ) keysValues
-       DB.write db def ops
-       return $ length ops
+       forM_ keysValues $ \(key, values) ->
+           do mOldValues <- (safeConvert <$>) <$> DB.get db def key
+              let oldValues = Set.fromList $
+                              case mOldValues of
+                                Just (Right (Values values)) -> values
+                                _ -> []
+                  newValues = filter (not . (`Set.member` oldValues)) values
+                  values' = Values $ newValues ++ Set.toList oldValues
+              DB.put db def key $ convert $ values'
+       return $ length keysValues
 
 
 main :: IO ()
 main = 
     runResourceT $
-    do db <- DB.open "state" $ DB.defaultOptions { DB.createIfMissing = True }
+    do token <- BC.pack <$> show <$> liftIO getClockTime
+       db <- DB.open "state" $ DB.defaultOptions { DB.createIfMissing = True }
        (lines, records) <- parseFile <$> lift LBC.getContents >>=
                 foldM 
                 (\(!lines, !records) reqs ->
                      do let lines' = length reqs
-                        records' <- writeReqs db reqs
+                        records' <- writeReqs db token reqs
                         return (lines + lines', records + records')
                 ) (0 :: Int, 0 :: Int) .
-                groupByDateTime .
+                groupByDate .
                 filter (\req ->
                             reqMethod req == "GET" &&
                             reqCode req >= 200 && 
