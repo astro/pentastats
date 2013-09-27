@@ -9,95 +9,84 @@ import Data.Conduit
 import Data.Convertible
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Conduit.List as CL
+import Data.Maybe
+import qualified Data.HashMap.Strict as Map
+import Text.Printf
+import Data.List (sort)
 
 import Shared
 import SourceIter
 
 
-
-data Grouped = PathStart BC.ByteString
-             | DateStart Date
-             | HostStart BC.ByteString
-             | Size Int
-             | HostEnd BC.ByteString
-             | DateEnd Date
-             | PathEnd BC.ByteString
-               deriving (Show, Eq)
-
-trackStates :: Conduit (BC.ByteString, BC.ByteString) (ResourceT IO) Grouped
-trackStates = trackStates' Nothing Nothing Nothing
-    
-trackStates' :: Maybe BC.ByteString ->
-                Maybe Date ->
-                Maybe BC.ByteString ->
-                Conduit (BC.ByteString, BC.ByteString) (ResourceT IO) Grouped
-trackStates' mPath mDate mHost =
+groupByPaths :: (Maybe st -> Key -> Value -> ResourceT IO (Maybe st)) ->
+                (st -> BC.ByteString -> ResourceT IO ()) ->
+                Maybe BC.ByteString -> 
+                Maybe st -> 
+                Sink (Key, Value) (ResourceT IO) ()
+groupByPaths aggregate finalizeByPath mPath mState =
     do mKeyValue <- await
-       let mKey = safeConvert <$> fst <$> mKeyValue >>= \lr ->
-                  case lr of
-                    Right key -> Just key
-                    Left _ -> Nothing
-       case mHost of
-         Just host | mHost /= (kHost <$> mKey) ||
-                     mDate /= (kDate <$> mKey) || 
-                     mPath /= (kPath <$> mKey) -> yield $ HostEnd host
-         _ -> return ()
-       case mDate of
-         Just date | mDate /= (kDate <$> mKey) || 
-                     mPath /= (kPath <$> mKey) -> yield $ DateEnd date
-         _ -> return ()
-       case mPath of
-         Just path | mPath /= (kPath <$> mKey) -> yield $ PathEnd path
-         _ -> return ()
-
-       case kPath <$> mKey of
-         Just path | mPath /= Just path -> yield $ PathStart path
-         _ -> return ()
-       case kDate <$> mKey of
-         Just date | mDate /= Just date ||
-                     mPath /= (kPath <$> mKey) -> yield $ DateStart date
-         _ -> return ()
-       case kHost <$> mKey of
-         Just host | mHost /= Just host ||
-                     mDate /= (kDate <$> mKey) ||
-                     mPath /= (kPath <$> mKey) -> yield $ HostStart host
-         _ -> return ()
-
-       case safeConvert <$> snd <$> mKeyValue of
-         Just (Right (Value size _)) -> 
-             --liftIO (putStrLn $ show mKey ++ " " ++ show size) >>
-             yield (Size size)
-         _ -> return ()
-         
+       let mKey = fst <$> mKeyValue
+       mState' <- case (mPath, mState) of
+                    (Just path, Just state)
+                        | Just path /= (kPath <$> mKey) ->
+                            do lift $ finalizeByPath state path
+                               return Nothing
+                    (_, _) ->
+                        return mState
        case mKeyValue of
-         Just _ ->
-             trackStates' (kPath <$> mKey)
-                      (kDate <$> mKey)
-                      (kHost <$> mKey)
-         _ ->
+         Just (key, value) ->
+             do mState'' <- lift $ aggregate mState' key value
+                groupByPaths aggregate finalizeByPath 
+                      (Just $ kPath key) mState''
+         Nothing ->
              return ()
 
-stats :: Sink Grouped (ResourceT IO) ()
-stats = CL.foldM (\(!days, !size) g ->
-                      --liftIO (print g) >>
-                      case g of
-                        PathStart _ ->
-                            return (0, 0)
-                        Size size' ->
-                            --liftIO (putStrLn $ "Size: " ++ show size') >>
-                            return (days, size + size')
-                        DateStart _ ->
-                            return (days + 1, size)
-                        PathEnd path ->
-                            do liftIO $ putStrLn $
-                                      BC.unpack path ++ " " ++ 
-                                      show size ++ " bytes in " ++
-                                      show days ++ " days"
-                               return (0, 0)
-                        _ ->
-                            return (days, size)
-                 ) (0 :: Int, 0 :: Int) >>
-        return ()
+aggregateStats :: Sink (BC.ByteString, BC.ByteString) (ResourceT IO) ()
+aggregateStats =
+    CL.mapMaybe (\(key, value) ->
+                     case (safeConvert key, safeConvert value) of
+                       (Right key', Right value') -> Just (key', value')
+                       _ -> Nothing
+                ) =$
+    groupByPaths aggregate finalizeByPath Nothing Nothing
+    
+    where aggregate Nothing key value =
+              aggregate (Just Map.empty) key value
+          aggregate (Just days) key value =
+              return $
+              let day = kDate key
+                  host = kHost key
+                  size = vSize value
+                  days' = case day `Map.lookup` days of
+                            Nothing ->
+                                Map.insert day 
+                                (Map.singleton host size) 
+                                days
+                            Just hosts ->
+                                Map.insert day
+                                (Map.insertWith (+) host size hosts)
+                                days
+              in Just days'
+                 
+          finalizeByPath days path =
+              do let fileSize = 100 * 1024 * 1024 :: Int
+                     days' = sort $
+                             map (\(day, hosts) ->
+                                      let downloads :: Double
+                                          downloads =
+                                              sum $
+                                              map ((/ (fromIntegral fileSize)) .
+                                                   fromIntegral .
+                                                   min fileSize .
+                                                   snd) $
+                                              Map.toList hosts
+                                      in (day, downloads)
+                                 ) $
+                             Map.toList days
+                 liftIO $ 
+                        do putStrLn $ BC.unpack path
+                           forM_ days' $ \(day, downloads) ->
+                               printf "\t%s\t%.2f\n" (show day) downloads
 
 main :: IO ()
 main = 
@@ -105,4 +94,4 @@ main =
     do db <- DB.open "state" $ DB.defaultOptions { DB.createIfMissing = True }
        iter <- DB.iterOpen db def
        DB.iterFirst iter
-       sourceIter iter $$ trackStates =$ stats
+       sourceIter iter $$ aggregateStats

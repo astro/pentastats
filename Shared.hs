@@ -6,6 +6,7 @@ import qualified Data.ByteString.Char8 as BC
 import Data.Convertible
 import Data.List
 import Data.Char (isDigit, ord)
+import Data.Hashable
 
 padLeft :: [a] -> Int -> [a] -> [a]
 padLeft xs l padding
@@ -51,6 +52,9 @@ instance Convertible BC.ByteString Date where
                          
 instance Convertible Date BC.ByteString where
     safeConvert = Right . BC.pack . show
+
+instance Hashable Date where
+    hash (Date y m d) = hash (y, m, d)
 
 data DayTime = DayTime Int Int Int
              deriving (Ord, Eq)
