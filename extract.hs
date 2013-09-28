@@ -19,6 +19,8 @@ import qualified Network.HTTP as HTTP
 import Data.IORef
 import Control.Exception (catch, SomeException)
 import Network.URI (parseURI)
+import qualified Crypto.Hash.MD5 as MD5
+import Data.Hex
 
 import Shared
 import SourceIter
@@ -47,9 +49,13 @@ groupByPaths aggregate finalizeByPath mPath mState =
          Nothing ->
              return ()
 
+dataPath :: FilePath
+dataPath = "public/data/"
+
 aggregateStats :: Sink (BC.ByteString, BC.ByteString) (ResourceT IO) ()
 aggregateStats = 
     do refFileSizes <- liftIO loadFileSizes
+       refIndex <- liftIO $ newIORef Map.empty
        
        let aggregate Nothing key value =
                aggregate (Just Map.empty) key value
@@ -86,7 +92,11 @@ aggregateStats =
                           Map.toList days
                   liftIO $ 
                          do putStrLn $ BC.unpack path
-                            putStrLn $ LBC.unpack $ JSON.encode days'
+                            let jsonName = hex $ MD5.hash path
+                                jsonPath = dataPath ++ BC.unpack jsonName ++ ".json"
+                            LBC.writeFile jsonPath $ JSON.encode days'
+                            modifyIORef refIndex $
+                                Map.insert path jsonName
                             
        CL.mapMaybe (\(key, value) ->
                         case (safeConvert key, safeConvert value) of
@@ -95,7 +105,12 @@ aggregateStats =
                    ) =$ groupByPaths aggregate finalizeByPath Nothing Nothing
          
        liftIO $ saveFileSizes refFileSizes
+       liftIO $ saveIndex refIndex
     
+saveIndex :: IORef (Map.HashMap BC.ByteString BC.ByteString) -> IO ()
+saveIndex refIndex = 
+    readIORef refIndex >>=
+    LBC.writeFile (dataPath ++ "index.json") . JSON.encode
 
 fetchFileSize :: BC.ByteString -> IO (Maybe Int)
 fetchFileSize path
