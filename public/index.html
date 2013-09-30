@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html ng-app="pentastats">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Pentastats</title>
+    <script src="angular.min.js" type="application/javascript"></script>
+    <script src="flot/jquery.min.js" type="application/javascript"></script>
+    <script src="flot/jquery.flot.min.js" type="application/javascript"></script>
+    <script src="flot/jquery.flot.time.min.js" type="application/javascript"></script>
+    <script src="app.js" type="application/javascript"></script>
+    <link rel="stylesheet" type="text/css" href="app.css">
+  </head>
+
+  <body ng-controller="MainController">
+    <h1>HTTP Log Statistics</h1>
+
+    <section ng-repeat="pane in panes" ng-controller="PaneController">
+      <p class="controls">
+	<label>
+	  Path:
+	  <select ng-model="pane.fileKey" ng-options="key as path for (path, key) in paths">
+	  </select>
+	</label>
+      </p>
+
+      <div class="chart" chart-container style="height: 12em">
+      </div>
+    </section>
+
+    <nav class="bottom">
+      <button ng-click="addPane()">+</button>
+    </nav>
+  </body>
+</html>
