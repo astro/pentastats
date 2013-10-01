@@ -1,0 +1,46 @@
+name: pentastats
+version: 2.0.0
+license: GPL-3
+author: Astro
+maintainer: Astro
+cabal-version: >= 1.8
+build-type: Simple
+
+executable pentalog
+    ghc-options: -Wall -O2
+    main-is: pentalog.hs
+    build-depends:
+        base,
+        conduit,
+        hashable,
+        convertible,
+        bytestring,
+        containers,
+        old-time,
+        mtl,
+        resourcet,
+        data-default,
+        leveldb-haskell,
+        unordered-containers,
+        attoparsec
+
+executable extract
+    ghc-options: -Wall -O2
+    main-is: extract.hs
+    build-depends:
+        base,
+        hex,
+        HTTP,
+        aeson,
+        convertible,
+        bytestring,
+        resourcet,
+        leveldb-haskell,
+        mtl,
+        conduit,
+        hashable,
+        cryptohash,
+        network,
+        text,
+        unordered-containers,
+        data-default

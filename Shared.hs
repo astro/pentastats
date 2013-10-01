@@ -54,7 +54,7 @@ instance Convertible Date BC.ByteString where
     safeConvert = Right . BC.pack . show
 
 instance Hashable Date where
-    hash (Date y m d) = hash (y, m, d)
+    hashWithSalt salt (Date y m d) = hashWithSalt salt (y, m, d)
 
 data DayTime = DayTime Int Int Int
              deriving (Ord, Eq)

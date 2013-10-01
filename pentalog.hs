@@ -8,12 +8,10 @@ import Data.Attoparsec.Lazy hiding (take, takeTill, takeWhile)
 import Data.Attoparsec.Char8 (peekChar, anyChar, char, char8, takeWhile, takeTill, isDigit, isAlpha_ascii)
 import Prelude hiding (takeWhile)
 import Control.Monad
-import Data.Time.Clock
 import Data.Maybe (fromMaybe)
 import Data.List (foldl', intercalate)
 import qualified Data.HashMap.Strict as Map
 import System.IO
-import Network.URI (parseURI)
 import GHC.Real (Ratio((:%)))
 import Debug.Trace
 import Data.Char (ord)
