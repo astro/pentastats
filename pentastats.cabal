@@ -43,4 +43,5 @@ executable extract
         network,
         text,
         unordered-containers,
-        data-default
+        data-default,
+        hs-GeoIP

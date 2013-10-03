@@ -23,3 +23,32 @@
 ## frontend TODO:
 * order by mostrecent peak
 * group by ext, geoip, u-a
+
+
+## JSON schemas
+
+### public/data/index.json
+
+```json
+[ { path: "/pentaradio/pentaradio-2013-08-27",
+    key: "EB2614777390DCE637C6CE53CFB5CCF1",
+    peak: "2013-08-28",
+	downloads: 1275.3 } ]
+```
+
+### public/data/????????????????????????????????.json
+
+```json
+{ downloads: {
+    "2013-08-28": 281.5 },
+  "user-agents": {
+  },
+  "geo": {
+    "2013-08-28": {
+	  "DE": 200,
+	  "AT": 30,
+	  "CH": 25
+	}
+  }
+}
+```

@@ -15,12 +15,14 @@ import qualified Data.HashMap.Strict as Map
 import Data.Aeson ((.=))
 import qualified Data.Aeson as JSON
 import qualified Data.Text as T
+import Data.Text.Encoding (decodeUtf8)
 import qualified Network.HTTP as HTTP
 import Data.IORef
 import Control.Exception (catch, SomeException)
 import Network.URI (parseURI)
 import qualified Crypto.Hash.MD5 as MD5
 import Data.Hex
+import qualified Data.Geolocation.GeoIP as Geo
 
 import Shared
 import SourceIter
@@ -56,6 +58,8 @@ aggregateStats :: Sink (BC.ByteString, BC.ByteString) (ResourceT IO) ()
 aggregateStats = 
     do refFileSizes <- liftIO loadFileSizes
        refIndex <- liftIO $ newIORef Map.empty
+       geoDB <- liftIO $ Geo.openGeoDB Geo.mmap_cache "/usr/share/GeoIP/GeoLiteCity.dat"
+       let geoLocate = Geo.geoLocateByIPAddress geoDB
        
        let aggregate Nothing key value =
                aggregate (Just Map.empty) key value
@@ -64,6 +68,7 @@ aggregateStats =
                let day = kDate key
                    host = kHost key
                    size = vSize value
+                   -- TODO: not only by host but also useragent
                    days' = case day `Map.lookup` days of
                              Nothing ->
                                  Map.insert day 
@@ -77,24 +82,40 @@ aggregateStats =
                  
            finalizeByPath days path =
                do fileSize <- liftIO $ getFileSize refFileSizes path
-                  let days' = JSON.object $
-                          map (\(day, hosts) ->
-                               let downloads :: Double
-                                   downloads =
-                                       sum $
-                                       map ((/ (fromIntegral fileSize)) .
-                                            fromIntegral .
-                                            min fileSize .
-                                            snd) $
-                                       Map.toList hosts
-                               in T.pack (show day) .= downloads
-                              ) $
-                          Map.toList days
+                  days' <- forM (Map.toList days) $ \(day,hosts) ->
+                           do -- | Relative to fileSize:
+                              let hostDownloads = 
+                                      Map.map ((/ (fromIntegral fileSize)) .
+                                               fromIntegral .
+                                               min fileSize) hosts
+                                  day' = T.pack $ show day
+                                  downloads :: Double
+                                  downloads = sum $
+                                              snd `map` Map.toList hostDownloads
+                              geo <- 
+                                  liftIO $
+                                  foldM (\(!geo) (host, hostDownloads') ->
+                                             do country <- 
+                                                    maybe "??" (decodeUtf8 . Geo.geoCountryCode) <$>
+                                                    geoLocate host
+                                                return $
+                                                       Map.insertWith (+) 
+                                                       country hostDownloads'
+                                                       geo
+                                         ) (Map.empty :: Map.HashMap T.Text Double) $
+                                  Map.toList hostDownloads
+                              return (day' .= downloads,
+                                       day' .= geo)
+                  let daysDownloads = JSON.object $ map fst days'
+                      daysGeo = JSON.object $ map snd days'
                   liftIO $ 
                          do putStrLn $ BC.unpack path
                             let jsonName = hex $ MD5.hash path
                                 jsonPath = dataPath ++ BC.unpack jsonName ++ ".json"
-                            LBC.writeFile jsonPath $ JSON.encode days'
+                            LBC.writeFile jsonPath $ JSON.encode $ JSON.object [
+                                    "downloads" .= daysDownloads,
+                                    "geo" .= daysGeo
+                                   ]
                             modifyIORef refIndex $
                                 Map.insert path jsonName
                             
