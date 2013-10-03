@@ -95,9 +95,11 @@ aggregateStats =
                               geo <- 
                                   liftIO $
                                   foldM (\(!geo) (host, hostDownloads') ->
-                                             do country <- 
-                                                    maybe "??" (decodeUtf8 . Geo.geoCountryCode) <$>
-                                                    geoLocate host
+                                             do let unknown
+                                                        | ':' `BC.elem` host = "v6"
+                                                        | otherwise = "?"
+                                                country <- maybe unknown (decodeUtf8 . Geo.geoCountryCode) <$>
+                                                           geoLocate host
                                                 return $
                                                        Map.insertWith (+) 
                                                        country hostDownloads'
