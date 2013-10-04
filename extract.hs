@@ -26,6 +26,7 @@ import qualified Data.Geolocation.GeoIP as Geo
 
 import Shared
 import SourceIter
+import UAFilter
 
 
 groupByPaths :: (Maybe st -> Key -> Value -> ResourceT IO (Maybe st)) ->
@@ -60,41 +61,41 @@ aggregateStats =
        refIndex <- liftIO $ newIORef Map.empty
        geoDB <- liftIO $ Geo.openGeoDB Geo.mmap_cache "/usr/share/GeoIP/GeoLiteCity.dat"
        let geoLocate = Geo.geoLocateByIPAddress geoDB
+       uaFilter <- liftIO loadFilters
        
        let aggregate Nothing key value =
                aggregate (Just Map.empty) key value
            aggregate (Just days) key value =
                return $
                let day = kDate key
-                   host = kHost key
+                   host_ua = (kHost key, kUserAgent key)
                    size = vSize value
-                   -- TODO: not only by host but also useragent
                    days' = case day `Map.lookup` days of
                              Nothing ->
                                  Map.insert day 
-                                        (Map.singleton host size) 
+                                        (Map.singleton host_ua size) 
                                         days
-                             Just hosts ->
+                             Just hosts_uas ->
                                  Map.insert day
-                                        (Map.insertWith (+) host size hosts)
+                                        (Map.insertWith (+) host_ua size hosts_uas)
                                         days
                in Just days'
                  
            finalizeByPath days path =
                do fileSize <- liftIO $ getFileSize refFileSizes path
-                  days' <- forM (Map.toList days) $ \(day,hosts) ->
+                  days' <- forM (Map.toList days) $ \(day,hosts_uas) ->
                            do -- | Relative to fileSize:
-                              let hostDownloads = 
+                              let hostUaDownloads = 
                                       Map.map ((/ (fromIntegral fileSize)) .
                                                fromIntegral .
-                                               min fileSize) hosts
+                                               min fileSize) hosts_uas
                                   day' = T.pack $ show day
                                   downloads :: Double
                                   downloads = sum $
-                                              snd `map` Map.toList hostDownloads
+                                              snd `map` Map.toList hostUaDownloads
                               geo <- 
                                   liftIO $
-                                  foldM (\(!geo) (host, hostDownloads') ->
+                                  foldM (\(!geo) ((host, _ua), hostDownloads) ->
                                              do let unknown
                                                         | ':' `BC.elem` host = "v6"
                                                         | otherwise = "?"
@@ -102,21 +103,40 @@ aggregateStats =
                                                            geoLocate host
                                                 return $
                                                        Map.insertWith (+) 
-                                                       country hostDownloads'
+                                                       country hostDownloads
                                                        geo
                                          ) (Map.empty :: Map.HashMap T.Text Double) $
-                                  Map.toList hostDownloads
+                                  Map.toList hostUaDownloads
+                              userAgents <-
+                                  liftIO $
+                                  foldM (\(!uas) ((_host, ua), uaDownloads) ->
+                                             do mUa <- uaFilter ua
+                                                ua' <- case mUa of
+                                                         Just ua' -> return ua'
+                                                         Nothing ->
+                                                             do --putStrLn $ "Unknown user-agent: " ++ show ua
+                                                                return ""
+                                                return $
+                                                       Map.insertWith (+)
+                                                       ua' uaDownloads
+                                                       uas
+                                        ) (Map.empty :: Map.HashMap T.Text Double) $
+                                  Map.toList hostUaDownloads
                               return (day' .= downloads,
-                                       day' .= geo)
-                  let daysDownloads = JSON.object $ map fst days'
-                      daysGeo = JSON.object $ map snd days'
+                                      day' .= geo,
+                                      day' .= userAgents
+                                     )
+                  let daysDownloads = JSON.object $ map (\(d, _, _) -> d) days'
+                      daysGeo = JSON.object $ map (\(_, g, _) -> g) days'
+                      daysUserAgents = JSON.object $ map (\(_, _, ua) -> ua) days'
                   liftIO $ 
                          do putStrLn $ BC.unpack path
                             let jsonName = hex $ MD5.hash path
                                 jsonPath = dataPath ++ BC.unpack jsonName ++ ".json"
                             LBC.writeFile jsonPath $ JSON.encode $ JSON.object [
                                     "downloads" .= daysDownloads,
-                                    "geo" .= daysGeo
+                                    "geo" .= daysGeo,
+                                    "user_agents" .= daysUserAgents
                                    ]
                             modifyIORef refIndex $
                                 Map.insert path jsonName

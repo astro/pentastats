@@ -1,0 +1,104 @@
+# Browsers
+
+"Firefox" ^Mozilla/\d+.+Firefox/
+"Firefox" ^Mozilla/\d+.+Iceweasel/
+"Thunderbird" ^Mozilla/\d+.+Thunderbird/
+"Chrome" ^Mozilla/\d+.+Chrome/
+"Safari" ^Mozilla/\d+.+Safari/
+"WebKit" ^Mozilla/\d+.+AppleWebKit/
+"Konqueror" ^Mozilla/\d+.+Konqueror/
+"Opera" ^Opera/\d+
+"IE" ^Mozilla/\d+.*MSIE \d
+"IE" ^IE \d+
+"Quicktime" ^Quicktime/\d
+"AppleCoreMedia" ^AppleCoreMedia/\d
+"DoCoMo" ^DoCoMo/\d
+"Android" ^stagefright/\d
+"Android" ^Dalvik/\d
+
+
+# Podcasting
+
+"Miro" ^Miro/\d
+"iTunes" ^iTunes
+"iTunes" ^ITMS$
+"BeyondPod" ^Mozilla/\d.+BeyondPod
+"Instacast" ^Instacast/\d
+"Podcasts" ^Podcasts/\d
+"Podcasts" ^podcasts/\d
+"Zune" ^Zune/\d
+"XBMC" ^XBMC/\d
+"Winamp" ^Winamp
+"Volksempfaenger" ^Volksempfaenger/\d
+"VLC" ^VLC/\d
+"VLC" ^VLC media player
+"VLC" ^vlc/\d
+"Symbian Podcatcher" ^Symbian/Podcatcher
+"Pocket Casts" ^Shifty Jelly Pocket Casts
+"RSSRadio" ^RSSRadio/\d
+"RSSOwl" ^RSSOwl/\d
+"PSP" ^PSPRssChannel-agent/\d
+"PodTrapper" ^PodTrapper
+"podracer" ^podracer
+"Podkicker" ^Podkicker
+"podcatcher (Ruby)" ^podcatcher/\d.+Ruby/
+"Windows Media Player" ^NSPlayer/\d
+"Samsung" ^SAMSUNG-
+"Samsung" ^Samsung
+"newsbeuter" ^newsbeuter/\d
+"MPlayer" ^MPlayer
+"ffmpeg" ^Lavf\d
+"DoggCatcher" ^Mozilla/\d.+DoggCatcher$
+"gPodder" ^gPodder/\d
+"hpodder" ^hpodder 
+"Google Listen" ^Google-Listen/\d
+"Downcast" ^Downcast/\d
+"Flipboard" ^Flipboard/\d
+
+
+# Downloaders
+
+"lftp" ^lftp/\d
+"Java" ^Java/\d
+"CCBot" ^CCBot/\d
+"Wget" ^Wget/\d
+"Wget" ^Wget$
+"curl" ^curl/\d
+"Transmission" ^Transmission/\d
+"rtorrent" ^rtorrent/
+"libtorrent" ^libtorrent/
+"qBittorrent" ^qBittorrent
+"Prozilla" ^Prozilla
+"Deluge" ^Deluge
+"Gnome" ^gvfs/\d
+"Android" ^AndroidDownloadManager/\d
+
+
+# Services
+
+"Bitlove" ^PritTorrent/
+"reliveradio" ^reliveradio
+"Read Later" ^Read%20Later/
+"msn" ^msnbot
+"Yandex" ^Yandex/\d
+"Yandex" ^Mozilla/\d.+YandexBot/\d
+"Google" ^Mozilla/\d.+Googlebot/\d
+"Google" ^Googlebot-
+"Baidu" ^Mozilla/\d.+Baiduspider/\d
+"Baidu" ^Baiduspider-
+"CareerBot" ^Mozilla/\d.+CareerBot/\d
+"Bing" ^Mozilla/\d.+bingbot/\d
+"Ezooms" ^Mozilla/\d.+Ezooms/\d
+"Exabot" ^Mozilla/\d.+Exabot/\d
+"Nagios" ^check_http/.+nagios-plugins
+"Python" ^Python-urllib/\d
+"Python" ^python-requests/\d
+"Python" ^PycURL/\d
+"PHP" ^phpcurl!$
+"80legs" ^Mozilla/\d.+008/\d.+www\.80legs\.com
+"YACY" ^yacybot
+"Nutch" ^Netluchs/Nutch-\d
+"Nutch" ^Nutch/Nutch-\d
+"SISTRIX" ^Mozilla/\d.+SISTRIX Crawler
+"larbin" ^larbin_\d
+"findlinks" ^findlinks/\d

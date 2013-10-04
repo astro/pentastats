@@ -44,4 +44,6 @@ executable extract
         text,
         unordered-containers,
         data-default,
-        hs-GeoIP
+        hs-GeoIP,
+        attoparsec,
+        regex-pcre
