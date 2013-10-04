@@ -67,7 +67,7 @@ findPeak dayDownloads =
                 return (date, downloads)
     in Just $ fst $
        maximumBy (\(_, downloads1) (_, downloads2) ->
-                      downloads2 `compare` downloads1
+                      downloads1 `compare` downloads2
                  ) ds
 
 limitOthers :: [Map.HashMap T.Text Double] -> [Map.HashMap T.Text Double]

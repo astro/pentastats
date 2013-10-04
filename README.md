@@ -15,7 +15,6 @@
 * referrer in keys
 
 ## extract TODO:
-* find peak over 2 days
 * refererrer
 
 ## frontend TODO:
