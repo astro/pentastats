@@ -103,8 +103,6 @@ limitOthers dayMaps =
                     else top
                ) othersSums topDayMaps
 
-data IndexEntry = IndexEntry BC.ByteString BC.ByteString
-
 aggregateStats :: Sink (BC.ByteString, BC.ByteString) (ResourceT IO) ()
 aggregateStats = 
     do refFileSizes <- liftIO loadFileSizes
@@ -176,18 +174,18 @@ aggregateStats =
                                   Map.toList hostUaDownloads
                               return ((day', downloads, geo, userAgents),
                                       (day, downloads))
-                  let daysDownloads = JSON.object $ 
-                                      map (\(day, d, _, _) -> 
-                                               day .= d
-                                          ) days'
-                      mPeakDate = findPeak $ sort dayDownloads
+                  let mPeakDate = findPeak $ sort dayDownloads
+                      totalDownloads = sum daysDs
                       daysDays = map (\(day, _, _, _) -> day) days'
+                      daysDs = map (\(_, d, _, _) -> d) days'
+                      daysDownloads = JSON.object $
+                                      zipWith (.=) daysDays daysDs
                       daysGs = map (\(_, _, g, _) -> g) days'
-                      daysUas = map (\(_, _, _, ua) -> ua) days'
                       daysGs' = limitOthers daysGs
-                      daysUas' = limitOthers daysUas
                       daysGeo = JSON.object $ 
                                 zipWith (.=) daysDays daysGs'
+                      daysUas = map (\(_, _, _, ua) -> ua) days'
+                      daysUas' = limitOthers daysUas
                       daysUserAgents = JSON.object $ 
                                        zipWith (.=) daysDays daysUas'
                       
@@ -201,8 +199,12 @@ aggregateStats =
                                     "user_agents" .= daysUserAgents
                                    ]
                             modifyIORef refIndex $
-                                        Map.insertWith (++)
-                                        mPeakDate [IndexEntry path jsonName]
+                                        Map.insert path
+                                        (JSON.object 
+                                         [ "json" .= jsonName,
+                                           "peak" .= fmap show mPeakDate,
+                                           "downloads" .= totalDownloads
+                                         ])
                             
        CL.mapMaybe (\(key, value) ->
                         case (safeConvert key, safeConvert value) of
@@ -213,21 +215,11 @@ aggregateStats =
        liftIO $ saveFileSizes refFileSizes
        liftIO $ saveIndex refIndex
     
-saveIndex :: IORef (Map.HashMap (Maybe Date) [IndexEntry]) -> IO ()
+saveIndex :: JSON.ToJSON json => 
+             IORef json -> IO ()
 saveIndex refIndex = 
-    do index <- readIORef refIndex
-       let index' =
-               do (mDate, entries) <- sortBy (\a a' -> 
-                                                  fst a' `compare` fst a
-                                             ) $ 
-                                      Map.toList index
-                  IndexEntry path jsonName <- entries
-                  return $ JSON.object
-                             [ "d" .= fmap show mDate,
-                               "p" .= path,
-                               "j" .= jsonName
-                             ]
-       LBC.writeFile (dataPath ++ "index.json") $ JSON.encode index'
+    readIORef refIndex >>=
+    LBC.writeFile (dataPath ++ "index.json") . JSON.encode
 
 fetchFileSize :: BC.ByteString -> IO (Maybe Int)
 fetchFileSize path

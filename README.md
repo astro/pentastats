@@ -28,10 +28,10 @@
 ### public/data/index.json
 
 ```json
-[ { path: "/pentaradio/pentaradio-2013-08-27",
-    key: "EB2614777390DCE637C6CE53CFB5CCF1",
+{ "/pentaradio/pentaradio-2013-08-27":
+  { json: "EB2614777390DCE637C6CE53CFB5CCF1",
     peak: "2013-08-28",
-	downloads: 1275.3 } ]
+	downloads: 1275.3 } }
 ```
 
 ### public/data/????????????????????????????????.json
