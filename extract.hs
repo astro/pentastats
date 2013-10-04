@@ -23,6 +23,7 @@ import Network.URI (parseURI)
 import qualified Crypto.Hash.MD5 as MD5
 import Data.Hex
 import qualified Data.Geolocation.GeoIP as Geo
+import Data.List
 
 import Shared
 import SourceIter
@@ -55,6 +56,20 @@ groupByPaths aggregate finalizeByPath mPath mState =
 dataPath :: FilePath
 dataPath = "public/data/"
 
+findPeak :: [(Date, Double)] -> Maybe Date
+findPeak [] = Nothing
+findPeak dayDownloads = 
+    let ds = do d <- init $ tails dayDownloads
+                let ((date, _):_) = d
+                    downloads = sum $ map snd $ take 2 d
+                return (date, downloads)
+    in Just $ fst $
+       maximumBy (\(_, downloads1) (_, downloads2) ->
+                      downloads2 `compare` downloads1
+                 ) ds
+
+data IndexEntry = IndexEntry BC.ByteString BC.ByteString
+
 aggregateStats :: Sink (BC.ByteString, BC.ByteString) (ResourceT IO) ()
 aggregateStats = 
     do refFileSizes <- liftIO loadFileSizes
@@ -83,8 +98,10 @@ aggregateStats =
                  
            finalizeByPath days path =
                do fileSize <- liftIO $ getFileSize refFileSizes path
-                  days' <- forM (Map.toList days) $ \(day,hosts_uas) ->
-                           do -- | Relative to fileSize:
+                  (days', dayDownloads) <-
+                      fmap unzip $
+                      forM (Map.toList days) $ \(day,hosts_uas) ->
+                      do -- | Relative to fileSize:
                               let hostUaDownloads = 
                                       Map.map ((/ (fromIntegral fileSize)) .
                                                fromIntegral .
@@ -122,13 +139,14 @@ aggregateStats =
                                                        uas
                                         ) (Map.empty :: Map.HashMap T.Text Double) $
                                   Map.toList hostUaDownloads
-                              return (day' .= downloads,
-                                      day' .= geo,
-                                      day' .= userAgents
-                                     )
+                              return ((day' .= downloads,
+                                       day' .= geo,
+                                       day' .= userAgents),
+                                      (day, downloads))
                   let daysDownloads = JSON.object $ map (\(d, _, _) -> d) days'
                       daysGeo = JSON.object $ map (\(_, g, _) -> g) days'
                       daysUserAgents = JSON.object $ map (\(_, _, ua) -> ua) days'
+                      mPeakDate = findPeak $ sort dayDownloads
                   liftIO $ 
                          do putStrLn $ BC.unpack path
                             let jsonName = hex $ MD5.hash path
@@ -139,7 +157,8 @@ aggregateStats =
                                     "user_agents" .= daysUserAgents
                                    ]
                             modifyIORef refIndex $
-                                Map.insert path jsonName
+                                        Map.insertWith (++)
+                                        mPeakDate [IndexEntry path jsonName]
                             
        CL.mapMaybe (\(key, value) ->
                         case (safeConvert key, safeConvert value) of
@@ -150,10 +169,21 @@ aggregateStats =
        liftIO $ saveFileSizes refFileSizes
        liftIO $ saveIndex refIndex
     
-saveIndex :: IORef (Map.HashMap BC.ByteString BC.ByteString) -> IO ()
+saveIndex :: IORef (Map.HashMap (Maybe Date) [IndexEntry]) -> IO ()
 saveIndex refIndex = 
-    readIORef refIndex >>=
-    LBC.writeFile (dataPath ++ "index.json") . JSON.encode
+    do index <- readIORef refIndex
+       let index' =
+               do (mDate, entries) <- sortBy (\a a' -> 
+                                                  fst a' `compare` fst a
+                                             ) $ 
+                                      Map.toList index
+                  IndexEntry path jsonName <- entries
+                  return $ JSON.object
+                             [ "d" .= fmap show mDate,
+                               "p" .= path,
+                               "j" .= jsonName
+                             ]
+       LBC.writeFile (dataPath ++ "index.json") $ JSON.encode index'
 
 fetchFileSize :: BC.ByteString -> IO (Maybe Int)
 fetchFileSize path
