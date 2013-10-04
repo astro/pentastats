@@ -65,10 +65,12 @@ findPeak dayDownloads =
                 let ((date, _):_) = d
                     downloads = sum $ map snd $ take 2 d
                 return (date, downloads)
-    in Just $ fst $
-       maximumBy (\(_, downloads1) (_, downloads2) ->
-                      downloads1 `compare` downloads2
-                 ) ds
+        peakDate = fst $
+                   maximumBy (\(_, downloads1) (_, downloads2) ->
+                                  downloads1 `compare` downloads2
+                             ) ds
+    in seq peakDate $
+       Just peakDate
 
 limitOthers :: [Map.HashMap T.Text Double] -> [Map.HashMap T.Text Double]
 limitOthers dayMaps =
@@ -96,8 +98,7 @@ limitOthers dayMaps =
                               ) `map` dayMaps
         othersSums =
             Map.foldl' (+) 0 `map` otherDayMaps
-    in --trace ("top: " ++ show topDayMaps ++ "\nother: " ++ show otherDayMaps) $
-       zipWith (\sum top ->
+    in zipWith (\sum top ->
                     if sum > 0
                     then Map.insertWith (+) "*" sum top
                     else top
@@ -198,13 +199,14 @@ aggregateStats =
                                     "geo" .= daysGeo,
                                     "user_agents" .= daysUserAgents
                                    ]
-                            modifyIORef refIndex $
-                                        Map.insert path
-                                        (JSON.object 
-                                         [ "json" .= jsonName,
-                                           "peak" .= fmap show mPeakDate,
-                                           "downloads" .= totalDownloads
-                                         ])
+                            seq mPeakDate $ seq totalDownloads $
+                                modifyIORef refIndex $
+                                Map.insert path $
+                                JSON.object 
+                                        [ "json" .= jsonName,
+                                          "peak" .= fmap show mPeakDate,
+                                          "downloads" .= totalDownloads
+                                        ]
                             
        CL.mapMaybe (\(key, value) ->
                         case (safeConvert key, safeConvert value) of
