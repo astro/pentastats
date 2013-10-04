@@ -1,7 +1,6 @@
 -- | https://gist.github.com/ssadler/f1d7f799eef47b025c9c
 module SourceIter where
  
-import Control.Monad (when)
 import Control.Applicative    ((<$>), (<*>))
  
 import Data.Conduit

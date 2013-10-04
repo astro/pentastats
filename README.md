@@ -16,8 +16,6 @@
 
 ## extract TODO:
 * find peak over 2 days
-* geoip
-* user-agents
 * refererrer
 
 ## frontend TODO:

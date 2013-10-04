@@ -132,7 +132,7 @@ instance Convertible BC.ByteString Value where
         let (b', b'') = BC.break (== ' ') b
         in case (BC.head b'', readInt $ BC.unpack b') of
              (' ', Just size) -> Right $ Value size $ BC.tail b''
-             (_, Nothing) -> fail "Invalid value"
+             (_, _) -> fail "Invalid value"
 
 instance Convertible Value BC.ByteString where
     safeConvert (Value size token) =

@@ -6,7 +6,6 @@ import qualified Data.ByteString.Char8 as BC
 import Data.Attoparsec.Char8
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
-import Data.List
 import qualified Text.Regex.PCRE.ByteString as Re
 
 
@@ -24,15 +23,13 @@ filtersParser =
                        filtersParser
           comment = char '#' *>
                     takeTill (== '\n') *>
-                    endOfLine *>
                     filtersParser
           rule = do r <- flip Rule <$>
                          (char '"' *>
                           (decodeUtf8 <$> takeTill (== '\"')) <* 
                           char '"') <*>
                          (skipMany1 space *>
-                          takeTill (== '\n') <*
-                          endOfLine)
+                          takeTill (== '\n'))
                     (r :) <$> filtersParser
 
 type UAFilter = BC.ByteString -> IO (Maybe T.Text)
