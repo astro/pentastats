@@ -24,6 +24,8 @@ import qualified Crypto.Hash.MD5 as MD5
 import Data.Hex
 import qualified Data.Geolocation.GeoIP as Geo
 import Data.List
+import qualified Data.HashSet as Set
+import Debug.Trace
 
 import Shared
 import SourceIter
@@ -67,6 +69,39 @@ findPeak dayDownloads =
        maximumBy (\(_, downloads1) (_, downloads2) ->
                       downloads2 `compare` downloads1
                  ) ds
+
+limitOthers :: [Map.HashMap T.Text Double] -> [Map.HashMap T.Text Double]
+limitOthers dayMaps =
+    let topAmount = 7
+        sums =
+            foldl' (Map.unionWith (+)) 
+            Map.empty dayMaps
+        -- | sorted by their sum descending
+        sorted = 
+            map fst $
+            sortBy (\t t' ->
+                        snd t' `compare` snd t
+                   ) $
+            Map.toList sums
+        top =
+            Set.fromList $
+            take topAmount sorted
+        topDayMaps =
+            Map.filterWithKey (\key _ ->
+                                   key `Set.member` top
+                              ) `map` dayMaps
+        otherDayMaps =
+            Map.filterWithKey (\key _ ->
+                                   not $ key `Set.member` top
+                              ) `map` dayMaps
+        othersSums =
+            Map.foldl' (+) 0 `map` otherDayMaps
+    in --trace ("top: " ++ show topDayMaps ++ "\nother: " ++ show otherDayMaps) $
+       zipWith (\sum top ->
+                    if sum > 0
+                    then Map.insertWith (+) "*" sum top
+                    else top
+               ) othersSums topDayMaps
 
 data IndexEntry = IndexEntry BC.ByteString BC.ByteString
 
@@ -115,7 +150,7 @@ aggregateStats =
                                   foldM (\(!geo) ((host, _ua), hostDownloads) ->
                                              do let unknown
                                                         | ':' `BC.elem` host = "v6"
-                                                        | otherwise = "?"
+                                                        | otherwise = "*"
                                                 country <- maybe unknown (decodeUtf8 . Geo.geoCountryCode) <$>
                                                            geoLocate host
                                                 return $
@@ -132,21 +167,30 @@ aggregateStats =
                                                          Just ua' -> return ua'
                                                          Nothing ->
                                                              do --putStrLn $ "Unknown user-agent: " ++ show ua
-                                                                return ""
+                                                                return "*"
                                                 return $
                                                        Map.insertWith (+)
                                                        ua' uaDownloads
                                                        uas
                                         ) (Map.empty :: Map.HashMap T.Text Double) $
                                   Map.toList hostUaDownloads
-                              return ((day' .= downloads,
-                                       day' .= geo,
-                                       day' .= userAgents),
+                              return ((day', downloads, geo, userAgents),
                                       (day, downloads))
-                  let daysDownloads = JSON.object $ map (\(d, _, _) -> d) days'
-                      daysGeo = JSON.object $ map (\(_, g, _) -> g) days'
-                      daysUserAgents = JSON.object $ map (\(_, _, ua) -> ua) days'
+                  let daysDownloads = JSON.object $ 
+                                      map (\(day, d, _, _) -> 
+                                               day .= d
+                                          ) days'
                       mPeakDate = findPeak $ sort dayDownloads
+                      daysDays = map (\(day, _, _, _) -> day) days'
+                      daysGs = map (\(_, _, g, _) -> g) days'
+                      daysUas = map (\(_, _, _, ua) -> ua) days'
+                      daysGs' = limitOthers daysGs
+                      daysUas' = limitOthers daysUas
+                      daysGeo = JSON.object $ 
+                                zipWith (.=) daysDays daysGs'
+                      daysUserAgents = JSON.object $ 
+                                       zipWith (.=) daysDays daysUas'
+                      
                   liftIO $ 
                          do putStrLn $ BC.unpack path
                             let jsonName = hex $ MD5.hash path
