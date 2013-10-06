@@ -72,38 +72,6 @@ findPeak dayDownloads =
     in seq peakDate $
        Just peakDate
 
-limitOthers :: [Map.HashMap T.Text Double] -> [Map.HashMap T.Text Double]
-limitOthers dayMaps =
-    let topAmount = 7
-        sums =
-            foldl' (Map.unionWith (+)) 
-            Map.empty dayMaps
-        -- | sorted by their sum descending
-        sorted = 
-            map fst $
-            sortBy (\t t' ->
-                        snd t' `compare` snd t
-                   ) $
-            Map.toList sums
-        top =
-            Set.fromList $
-            take topAmount sorted
-        topDayMaps =
-            Map.filterWithKey (\key _ ->
-                                   key `Set.member` top
-                              ) `map` dayMaps
-        otherDayMaps =
-            Map.filterWithKey (\key _ ->
-                                   not $ key `Set.member` top
-                              ) `map` dayMaps
-        othersSums =
-            Map.foldl' (+) 0 `map` otherDayMaps
-    in zipWith (\sum top ->
-                    if sum > 0
-                    then Map.insertWith (+) "*" sum top
-                    else top
-               ) othersSums topDayMaps
-
 aggregateStats :: Sink (BC.ByteString, BC.ByteString) (ResourceT IO) ()
 aggregateStats = 
     do refFileSizes <- liftIO loadFileSizes
@@ -182,13 +150,11 @@ aggregateStats =
                       daysDownloads = JSON.object $
                                       zipWith (.=) daysDays daysDs
                       daysGs = map (\(_, _, g, _) -> g) days'
-                      daysGs' = limitOthers daysGs
                       daysGeo = JSON.object $ 
-                                zipWith (.=) daysDays daysGs'
+                                zipWith (.=) daysDays daysGs
                       daysUas = map (\(_, _, _, ua) -> ua) days'
-                      daysUas' = limitOthers daysUas
                       daysUserAgents = JSON.object $ 
-                                       zipWith (.=) daysDays daysUas'
+                                       zipWith (.=) daysDays daysUas
                       
                   liftIO $ 
                          do putStrLn $ BC.unpack path
