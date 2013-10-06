@@ -86,12 +86,13 @@ app.directive('chartContainer', function() {
 });
 
 app.controller('PaneController', function($scope, $http) {
+    $scope.pane.divKey = 'geo';
+
     $scope.$watch('pane.fileKey', function() {
 	var g = $scope.groups && $scope.groups[$scope.pane.fileKey];
 	if (!g)
 	    return;
 
-	$scope.pane.divKey = 'geo';
 	var datas = {
 	    ext: {},
 	    user_agents: {},
@@ -140,23 +141,49 @@ app.controller('PaneController', function($scope, $http) {
 	$scope.rerender = function() {
 	    $scope.data = [];
 	    var ks = datas[$scope.pane.divKey];
-	    for(var key in ks) {
+	    var day, key, keyTotals = {};
+	    for(key in ks) {
+		keyTotals[key] = 0;
+		for(var day in ks[key]) {
+		    keyTotals[key] = ks[key][day];
+		}
+	    }
+	    console.log("keyTotals", keyTotals);
+	    var topKeys = Object.keys(keyTotals).sort(function(k1, k2) {
+		var t1 = keyTotals[k1];
+		var t2 = keyTotals[k2];
+		if (t1 > t2)
+		    return -1;
+		else if (t1 < t2)
+		    return 1;
+		else
+		    return 0;
+	    });
+	    /* For stacking: */
+	    var dayHeight = {};
+	    console.log("topKeys", topKeys);
+	    topKeys.forEach(function(key) {
 		var series = {
+		    label: key,
 		    bars: {
 			show: true,
-			barWidth: 86400 * 1000
+			barWidth: Math.ceil(86400 * 1000),
+			lineWidth: 0
 		    },
 		    data: []
 		};
 		for(var day in ks[key]) {
 		    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
 			var time = new Date(day).getTime();
-			series.data.push([time, ks[key][day]]);
-		    } else
-			console.warn("Inv k", k);
+			var height = ks[key][day];
+			if (!dayHeight.hasOwnProperty(day))
+			    dayHeight[day] = 0;
+			series.data.push([time, dayHeight[day] + height, dayHeight[day]]);
+			dayHeight[day] += height;
+		    }
 		}
 		$scope.data.push(series);
-	    }
+	    });
 	};
     });
 });
