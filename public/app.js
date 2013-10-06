@@ -91,12 +91,56 @@ app.controller('PaneController', function($scope, $http) {
 	if (!g)
 	    return;
 
-	$scope.data = [];
+	$scope.pane.divKey = 'geo';
+	var datas = {
+	    ext: {},
+	    user_agents: {},
+	    geo: {}
+	};
 	g.forEach(function(path) {
 	    $http({
 		method: 'GET',
 		url: "data/" + path.json + ".json"
 	    }).success(function(data) {
+		/* Transpose & merge into datas.* */
+
+		if (!datas.ext.hasOwnProperty(path.ext))
+		    datas.ext[path.ext] = {};
+		for(var day in data.downloads) {
+		    if (!datas.ext[path.ext].hasOwnProperty(day))
+			datas.ext[path.ext][day] = 0;
+		    datas.ext[path.ext][day] += data.downloads[day];
+		}
+
+		for(var day in data.user_agents) {
+		    for(var ua in data.user_agents[day]) {
+			if (!datas.user_agents.hasOwnProperty(ua))
+			    datas.user_agents[ua] = {};
+			if (!datas.user_agents[ua].hasOwnProperty(day))
+			    datas.user_agents[ua][day] = 0;
+			datas.user_agents[ua][day] += data.user_agents[day][ua];
+		    }
+		}
+
+		for(var day in data.geo) {
+		    for(var country in data.geo[day]) {
+			if (!datas.geo.hasOwnProperty(country))
+			    datas.geo[country] = {};
+			if (!datas.geo[country].hasOwnProperty(day))
+			    datas.geo[country][day] = 0;
+			datas.geo[country][day] += data.geo[day][country];
+		    }
+		}
+
+		$scope.rerender();
+	    });
+	    // TODO: http error handling
+	});
+
+	$scope.rerender = function() {
+	    $scope.data = [];
+	    var ks = datas[$scope.pane.divKey];
+	    for(var key in ks) {
 		var series = {
 		    bars: {
 			show: true,
@@ -104,19 +148,16 @@ app.controller('PaneController', function($scope, $http) {
 		    },
 		    data: []
 		};
-		for(var k in data)
-		    if (/^\d{4}-\d{2}-\d{2}$/.test(k)) {
-			var time = new Date(k).getTime();
-			series.data.push([time, data[k]]);
-		    }
-
-		//series.data = series.data.sort();
+		for(var day in ks[key]) {
+		    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+			var time = new Date(day).getTime();
+			series.data.push([time, ks[key][day]]);
+		    } else
+			console.warn("Inv k", k);
+		}
 		$scope.data.push(series);
-		console.log("pushed", path.json);
-		$scope.$emit('data');
-	    });
-	});
-	// TODO: http error handling
+	    }
+	};
     });
 });
 

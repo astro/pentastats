@@ -21,6 +21,14 @@
 	  <select ng-model="pane.fileKey" ng-options="p.k as p.title for p in paths">
 	  </select>
 	</label>
+	<label>
+	  by
+	  <select ng-model="pane.divKey" ng-change="rerender()">
+	    <option value="geo">geolocation</option>
+	    <option value="ext">extension</option>
+	    <option value="user_agents">user-agents</option>
+	  </select>
+	</label>
       </p>
 
       <div class="chart" chart-container style="height: 12em">
