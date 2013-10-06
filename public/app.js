@@ -16,7 +16,44 @@ app.controller('MainController', function($scope, $http) {
 	method: 'GET',
 	url: "data/index.json"
     }).success(function(data) {
-	$scope.paths = data;
+	$scope.groups = {};
+	var k;
+	for(k in data)
+	    if (data.hasOwnProperty(k)) {
+		var ps = k.split(/\//g);
+		var pLast = ps.pop();
+		var xs = pLast.split(/\./);
+		var base = ps.join("/") + "/" + xs[0];
+		var ext = "" + xs[1];
+		if (!$scope.groups.hasOwnProperty(base))
+		    $scope.groups[base] = [];
+		data[k].ext = ext;
+		$scope.groups[base].push(data[k]);
+	    }
+	var paths = [];
+	for(k in $scope.groups) {
+	    var g = $scope.groups[k];
+	    var downloads = 0, peak;
+	    peak = null;
+	    g.forEach(function(path) {
+		downloads += path.downloads;
+		if (!peak || peak > path.peak)
+		    peak = path.peak;
+	    });
+	    paths.push({
+		k: k,
+		peak: peak,
+		title: k + " (" + Math.ceil(downloads) + ")"
+	    });
+	}
+	$scope.paths = paths.sort(function(p1, p2) {
+	    if (p1.k < p2.k)
+		return -1;
+	    else if (p1.k > p2.k)
+		return 1;
+	    else
+		return 0;
+	});
     });
     // TODO: http error handling
 });
@@ -50,28 +87,34 @@ app.directive('chartContainer', function() {
 
 app.controller('PaneController', function($scope, $http) {
     $scope.$watch('pane.fileKey', function() {
-	$http({
-	    method: 'GET',
-	    url: "data/" + $scope.pane.fileKey + ".json"
-	}).success(function(data) {
-	    var k, startDate, stopDate;
-	    $scope.data = [];
+	var g = $scope.groups && $scope.groups[$scope.pane.fileKey];
+	if (!g)
+	    return;
 
-	    var series = {
-		bars: {
-		    show: true,
-		    barWidth: 86400 * 1000
-		},
-		data: []
-	    };
-	    for(k in data)
-		if (/^\d{4}-\d{2}-\d{2}$/.test(k)) {
-		    var time = new Date(k).getTime();
-		    series.data.push([time, data[k]]);
-		}
+	$scope.data = [];
+	g.forEach(function(path) {
+	    $http({
+		method: 'GET',
+		url: "data/" + path.json + ".json"
+	    }).success(function(data) {
+		var series = {
+		    bars: {
+			show: true,
+			barWidth: 86400 * 1000
+		    },
+		    data: []
+		};
+		for(var k in data)
+		    if (/^\d{4}-\d{2}-\d{2}$/.test(k)) {
+			var time = new Date(k).getTime();
+			series.data.push([time, data[k]]);
+		    }
 
-	    series.data = series.data.sort();
-	    $scope.data = [series];
+		//series.data = series.data.sort();
+		$scope.data.push(series);
+		console.log("pushed", path.json);
+		$scope.$emit('data');
+	    });
 	});
 	// TODO: http error handling
     });

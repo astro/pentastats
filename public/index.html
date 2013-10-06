@@ -18,7 +18,7 @@
       <p class="controls">
 	<label>
 	  Path:
-	  <select ng-model="pane.fileKey" ng-options="key as path for (path, key) in paths">
+	  <select ng-model="pane.fileKey" ng-options="p.k as p.title for p in paths">
 	  </select>
 	</label>
       </p>
