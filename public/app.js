@@ -1,3 +1,5 @@
+var MAX_KEYS = 6;
+
 var app = angular.module('pentastats', []);
 
 app.controller('MainController', function($scope, $http) {
@@ -78,6 +80,10 @@ app.directive('chartContainer', function() {
 		    xaxis: {
 			mode: 'time',
 			timeformat: "%Y-%m-%d"
+		    },
+		    legend: {
+			show: true,
+			sorted: 'reverse'
 		    }
 		});
 	    });
@@ -143,9 +149,10 @@ app.controller('PaneController', function($scope, $http) {
 	    var ks = datas[$scope.pane.divKey];
 	    var day, key, keyTotals = {};
 	    for(key in ks) {
-		keyTotals[key] = 0;
+		if (!keyTotals.hasOwnProperty(key))
+		    keyTotals[key] = 0;
 		for(var day in ks[key]) {
-		    keyTotals[key] = ks[key][day];
+		    keyTotals[key] += ks[key][day];
 		}
 	    }
 	    console.log("keyTotals", keyTotals);
@@ -159,16 +166,42 @@ app.controller('PaneController', function($scope, $http) {
 		else
 		    return 0;
 	    });
+	    if (topKeys.length > MAX_KEYS) {
+		var othersInTop =
+		    topKeys.indexOf("*") >= 0 &&
+		    topKeys.indexOf("*") < MAX_KEYS;
+		topKeysLen = othersInTop ?
+		    MAX_KEYS :
+		    MAX_KEYS - 1;
+		topKeys = topKeys.slice(0, MAX_KEYS);
+		if (!othersInTop)
+		    topKeys.push("*");
+		var otherKeys = topKeys.slice(MAX_KEYS);
+		otherKeys.forEach(function(key) {
+		    if (key == "*")
+			return;
+
+		    for(var day in ks[key]) {
+			if (!ks["*"].hasOwnProperty(day))
+			    ks["*"][day] = 0;
+			ks["*"][day] += ks[key][day];
+		    }
+		    delete ks[key];
+		});
+	    }
+	    console.log("topKeys", topKeys);
 	    /* For stacking: */
 	    var dayHeight = {};
-	    console.log("topKeys", topKeys);
-	    topKeys.forEach(function(key) {
+	    topKeys.reverse().forEach(function(key) {
 		var series = {
-		    label: key,
+		    label: key == "*" ?
+			"Other" :
+			key + " (" + Math.floor(keyTotals[key]) + ")",
 		    bars: {
 			show: true,
 			barWidth: Math.ceil(86400 * 1000),
-			lineWidth: 0
+			lineWidth: 0,
+			fill: 1
 		    },
 		    data: []
 		};
