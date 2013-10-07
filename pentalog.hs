@@ -22,6 +22,7 @@ import Control.Monad.Trans
 import Data.Convertible
 import System.Time (getClockTime)
 import qualified Data.Set as Set
+import System.Environment
 
 import Shared
 
@@ -37,9 +38,27 @@ data Request = Request {
      reqUserAgent :: !BC.ByteString
   } deriving (Show)
 
-parseLine :: LBC.ByteString -> Result Request
-parseLine = {-# SCC "parse" #-} parse line
-    where line = do host <- {-# SCC "wordHost" #-} word
+parseLine :: BC.ByteString -> LBC.ByteString -> Result Request
+parseLine defaultHostname = {-# SCC "parse" #-} 
+  parse $
+  try (do vhost <- word
+          space
+          prependHost vhost <$> line
+      ) <|>
+  (prependHost defaultHostname <$>
+   line)
+    where prependHost host req
+              | BC.take 3 (snd $ 
+                           "://" `BC.breakSubstring` reqPath req
+                          ) == "://" =
+                  req
+              | BC.drop (BC.length host - 3) host == ":80" =
+                  prependHost (BC.take (BC.length host - 3) host) req
+              | otherwise =
+                  req { reqPath = "http://" `BC.append` 
+                                  host `BC.append` reqPath req
+                  }
+          line = do host <- {-# SCC "wordHost" #-} word
                     space
                     ident <- {-# SCC "wordIdent" #-} word
                     space
@@ -108,17 +127,17 @@ parseLine = {-# SCC "parse" #-} parse line
                  num
           eol = char '\n'
                          
-parseFile :: LBC.ByteString -> [Request]
-parseFile s 
+parseFile :: BC.ByteString -> LBC.ByteString -> [Request]
+parseFile defaultHostname s 
   | LBC.null s = []
   | otherwise =
-    case parseLine s of
+    case parseLine defaultHostname s of
       Done rest req ->
-          req : parseFile rest
+          req : parseFile defaultHostname rest
       Fail rest _ errMsg ->
           trace errMsg $
           let rest' = LBC.dropWhile (/= '\n') rest
-          in parseFile $ LBC.tail rest'
+          in parseFile defaultHostname $ LBC.tail rest'
 
 
 reqKey :: Request -> Key
@@ -138,15 +157,27 @@ group (req : reqs) =
 
 -- TODO: could do more
 normalizePaths :: [Request] -> [Request]
-normalizePaths = map $ \req ->
-                 req { reqPath = rmDots $ BC.takeWhile (/= '?') $ reqPath req }
-  where rmDots b
+normalizePaths = map normalizePath'
+  where normalizePath' req =
+            req { reqPath = BC.takeWhile (/= '?') $ rmDots $ reqPath req }
+        rmDots b = case "://" `BC.breakSubstring` b of
+                     (scheme, b')
+                         | BC.take 3 b' == "://" ->
+                             let b'' = BC.drop 3 b'
+                                 (host, path) = "/" `BC.breakSubstring` b''
+                                 path' = rmDots' path
+                             in BC.concat 
+                                    [scheme, "://",
+                                     host, path']
+                     _ ->
+                         rmDots' b
+        rmDots' b
           | BC.length b >= 2 &&
-            BC.take 2 b == "//" = rmDots $ BC.drop 1 b
+            BC.take 2 b == "//" = rmDots' $ BC.drop 1 b
           | BC.length b >= 4 &&
-            BC.take 4 b == "/../" = rmDots $ BC.drop 3 b
+            BC.take 4 b == "/../" = rmDots' $ BC.drop 3 b
           | BC.length b >= 3 &&
-            BC.take 3 b == "/./" = rmDots $ BC.drop 2 b
+            BC.take 3 b == "/./" = rmDots' $ BC.drop 2 b
           | otherwise = b
 
 -- Returns amount of keys written
@@ -170,25 +201,36 @@ writeReqs db token reqs =
 
 main :: IO ()
 main = 
+    do args <- getArgs
+       let defaultHostname' =
+               BC.pack $
+               case args of
+                 [defaultHostname] -> defaultHostname
+                 [] -> "localhost"
+       main' defaultHostname'
+
+main' :: BC.ByteString -> IO ()
+main' defaultHostname =
     runResourceT $
     do token <- BC.pack <$> show <$> liftIO getClockTime
        db <- DB.open "state" $ DB.defaultOptions { DB.createIfMissing = True }
-       (lines, records, bytes) <- parseFile <$> lift LBC.getContents >>=
-                foldM 
-                (\(!lines, !records, !bytes) reqs ->
-                     do let lines' = length reqs
-                            bytes' = sum $ map (fromMaybe 0 . reqSize) reqs
-                        --liftIO $ putStrLn $ "reqs: " ++ show reqs
-                        records' <- writeReqs db token reqs
-                        return (lines + lines', records + records', bytes + bytes')
-                ) (0 :: Int, 0 :: Int, 0 :: Int) .
-                group .
-                normalizePaths .
-                filter (\req ->
-                            reqMethod req == "GET" &&
-                            reqCode req >= 200 && 
-                            reqCode req < 300 
-                       )
+       (lines, records, bytes) <- 
+           parseFile defaultHostname <$> lift LBC.getContents >>=
+           foldM 
+           (\(!lines, !records, !bytes) reqs ->
+                do let lines' = length reqs
+                       bytes' = sum $ map (fromMaybe 0 . reqSize) reqs
+                   --liftIO $ putStrLn $ "reqs: " ++ show reqs
+                   records' <- writeReqs db token reqs
+                   return (lines + lines', records + records', bytes + bytes')
+           ) (0 :: Int, 0 :: Int, 0 :: Int) .
+           group .
+           normalizePaths .
+           filter (\req ->
+                       reqMethod req == "GET" &&
+                       reqCode req >= 200 && 
+                       reqCode req < 300 
+                  )
        lift $ putStrLn $ "Processed " ++ show lines ++ 
          " lines into " ++ show records ++ 
          " records (" ++ show bytes ++ " bytes)"

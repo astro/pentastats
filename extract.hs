@@ -24,8 +24,6 @@ import qualified Crypto.Hash.MD5 as MD5
 import Data.Hex
 import qualified Data.Geolocation.GeoIP as Geo
 import Data.List
-import qualified Data.HashSet as Set
-import Debug.Trace
 
 import Shared
 import SourceIter
@@ -191,13 +189,14 @@ saveIndex refIndex =
 
 fetchFileSize :: BC.ByteString -> IO (Maybe Int)
 fetchFileSize path
-    = do putStrLn $ "HEAD " ++ BC.unpack path
-         getSize `liftM` HTTP.simpleHTTP headRequest
+    | not (':' `BC.elem` path) =
+        return Nothing
+    | otherwise =
+        do putStrLn $ "HEAD " ++ BC.unpack path
+           getSize `liftM` HTTP.simpleHTTP headRequest
     where uri = fromMaybe undefined $
-                parseURI uri'
-          uri' | ':' `BC.elem` path = path'
-               | otherwise = "http://ftp.c3d2.de" ++ path'
-          path' = BC.unpack path
+                parseURI $ 
+                BC.unpack path
           headRequest :: HTTP.Request BC.ByteString
           headRequest = HTTP.mkRequest HTTP.HEAD uri
           getSize (Right rsp) = read <$>
