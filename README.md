@@ -1,17 +1,9 @@
 ## Data store
 
-* By filename
-* By day
-
-## Visualization
-
-* Section: group by show
-* Graph: group by episode
-  * Choose downloads, U-A, GeoIP
-* Line: group by format
 
 ## pentalog TODO:
-* full url
+* document
+* package
 * referrer in keys
 
 ## extract TODO:
@@ -19,7 +11,7 @@
 
 ## frontend TODO:
 * order by mostrecent peak
-* group by ext, geoip, u-a
+* navigable time
 
 
 ## JSON schemas
