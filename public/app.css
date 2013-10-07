@@ -25,6 +25,9 @@ h1, section {
     padding: 0.2em 1em;
     margin: 0;
 }
+.controls .fileKey {
+    max-width: 25em;
+}
 .bottom {
     margin: 1em 0 0;
     text-align: right;
