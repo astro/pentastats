@@ -1,3 +1,11 @@
+# Install
+
+    apt-get install -y libffi6 libgeoip1 libleveldb1
+    # pv comes in handy too
+
+Get [http://dev.maxmind.com/geoip/legacy/geolite/](GeoCityLite.dat)
+and put it under `/usr/share/GeoIP/`
+
 ## Data store
 
 
@@ -10,6 +18,7 @@
 * refererrer
 
 ## frontend TODO:
+* config: merge & rewrite
 * order by mostrecent peak
 * navigable time
 
