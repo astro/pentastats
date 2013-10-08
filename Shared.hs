@@ -14,7 +14,8 @@ padLeft xs l padding
     | otherwise = padLeft (padding ++ xs) l padding
 
 readInt :: String -> Maybe Int
-readInt = readInt' 0
+readInt ('-':s) = (0 -) <$> readInt s
+readInt s = readInt' 0 s
 
 readInt' :: Int -> String -> Maybe Int
 readInt' _ "" = Nothing
@@ -131,7 +132,7 @@ instance Convertible BC.ByteString Value where
     safeConvert b =
         let (b', b'') = BC.break (== ' ') b
         in case (BC.head b'', readInt $ BC.unpack b') of
-             (' ', Just size) -> Right $ Value size $ BC.tail b''
+             (' ', Just size) -> Right $ Value (max 0 size) $ BC.tail b''
              (_, _) -> fail "Invalid value"
 
 instance Convertible Value BC.ByteString where
