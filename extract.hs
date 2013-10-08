@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns, OverloadedStrings, ScopedTypeVariables #-}
 import Control.Monad
 import Control.Applicative
 import Data.Default (def)
@@ -193,7 +193,8 @@ fetchFileSize path
         return Nothing
     | otherwise =
         do putStrLn $ "HEAD " ++ BC.unpack path
-           getSize `liftM` HTTP.simpleHTTP headRequest
+           getSize <$> catch (HTTP.simpleHTTP headRequest)
+                       (\(_::SomeException) -> return $ Left undefined)
     where uri = fromMaybe undefined $
                 parseURI $ 
                 BC.unpack path
