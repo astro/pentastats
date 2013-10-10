@@ -28,7 +28,7 @@ readInt' r (x : xs)
                        _:_ -> readInt' i' xs
     | otherwise = Nothing
 
-data Date = Date Int Int Int
+data Date = Date !Int !Int !Int
             deriving (Ord, Eq)
                      
 instance Show Date where
