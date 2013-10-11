@@ -128,11 +128,10 @@ aggregateStats =
                               "\tdownloads: " ++ show dayDownloads ++
                               "\tgeo: " ++ show (Map.size geo') ++
                               "\tuas: " ++ show (Map.size uas')
-                   let day' = T.pack $ show day
                    return (path,
-                           Map.insertWith (+) day' dayDownloads downloads,
-                           Map.insertWith (Map.unionWith (+)) day' geo' geo,
-                           Map.insertWith (Map.unionWith (+)) day' uas' uas)
+                           Map.insertWith (+) day dayDownloads downloads,
+                           Map.insertWith (Map.unionWith (+)) day geo' geo,
+                           Map.insertWith (Map.unionWith (+)) day uas' uas)
                ) (undefined, Map.empty, Map.empty, Map.empty) $
                \(path, downloads, geo, uas) ->
                    do let totalDownloads =
