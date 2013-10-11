@@ -10,7 +10,6 @@ import Data.Convertible
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as LBC
 import qualified Data.Conduit.List as CL
-import Data.Conduit.Lazy
 import Data.Maybe
 import qualified Data.HashMap.Strict as Map
 import Data.Aeson ((.=))
@@ -23,117 +22,155 @@ import Network.URI (parseURI)
 import qualified Crypto.Hash.MD5 as MD5
 import Data.Hex
 import qualified Data.Geolocation.GeoIP as Geo
-import Data.List
+import Data.IORef
+import Data.List (foldl')
 
 import Shared
 import SourceIter
 import UAFilter
+import Aggregate
 
 
 dataPath :: FilePath
 dataPath = "public/data/"
 
-aggregateStats :: [(Key, Value)] -> ResourceT IO ()
-aggregateStats kvs = 
-    do fileSizes <- liftIO loadFileSizes
-       let index = Map.empty
+mapToObject :: (Show k, JSON.ToJSON j) => Map.HashMap k j -> JSON.Value
+mapToObject = JSON.object .
+              map (\(k, v) ->
+                       T.pack (show k) .= v
+                  ) .
+              Map.toList
+
+aggregateStats :: ResourceT IO (Aggregate (Key, Value) (ResourceT IO) ())
+aggregateStats = 
+    do refFileSizes <- liftIO loadFileSizes
        geoDB <- liftIO $ Geo.openGeoDB Geo.mmap_cache "/usr/share/GeoIP/GeoLiteCity.dat"
-       let geoLocate = Geo.geoLocateByIPAddress geoDB
+       let geoLocate host = let unknownCountry
+                                       | ':' `BC.elem` host = "v6"
+                                       | otherwise = "*"
+                            in maybe unknownCountry (decodeUtf8 . Geo.geoCountryCode) <$>
+                               Geo.geoLocateByIPAddress geoDB host
        uaFilter <- liftIO loadFilters
+       
+       let aggregateByDay :: Aggregate 
+                             (Key, Value)
+                             (ResourceT IO) 
+                             (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Int)
+           aggregateByDay =
+               foldAggregate 
+               (\(_, _, !hosts_uas) (k, v) ->
+                    do let path = kPath k
+                           day = kDate k
+                           host_ua = (kHost k, kUserAgent k)
+                           size = vSize v
+                       return 
+                           (path, day, 
+                            Map.insertWith (+) host_ua size hosts_uas
+                           )
+               ) (undefined, undefined, Map.empty) return
+               
+           aggregateByPath :: Aggregate 
+                              (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Int)
+                              (ResourceT IO) 
+                              (BC.ByteString, BC.ByteString, Double)
+           aggregateByPath =
+               foldAggregate 
+               (\(_, !downloads, !geo, !uas) (!path, !day, hosts_uas) ->
+                do fileSize <- liftIO $ getFileSize refFileSizes path
+                   let -- | Limit to max. 1 file size by (host, ua) per day
+                       hosts_uas' :: Map.HashMap (BC.ByteString, BC.ByteString) Double
+                       hosts_uas' =
+                           Map.map (min 1 .
+                                    (/ (fromIntegral fileSize)) .
+                                    fromIntegral) hosts_uas
+                       dayDownloads =
+                           sum $
+                           snd `map` Map.toList hosts_uas'
+
+                   hostCountries <- 
+                       foldM (\(!hostCountries) host ->
+                                  case host `Map.member` hostCountries of
+                                    True ->
+                                        return hostCountries
+                                    False ->
+                                        do country <- liftIO $ geoLocate host
+                                           return $
+                                                  Map.insert host country hostCountries
+                             ) Map.empty $
+                       map fst $
+                       Map.keys hosts_uas'
+                   uaNames <-
+                       foldM (\(!uaNames) ua ->
+                                  case ua `Map.member` uaNames of
+                                    True ->
+                                        return uaNames
+                                    False ->
+                                        do name <- fromMaybe "*" <$>
+                                                   liftIO (uaFilter ua)
+                                           return $
+                                                  Map.insert ua name uaNames
+                             ) Map.empty $
+                       map snd $
+                       Map.keys hosts_uas
+                       
+                   let (geo', uas') =
+                           foldl' 
+                           (\(!geo', !uas') ((host, ua), hostUaDownloads) ->
+                                let Just country = host `Map.lookup` hostCountries
+                                    Just ua' = ua `Map.lookup` uaNames
+                                in  (Map.insertWith (+) country hostUaDownloads geo',
+                                     Map.insertWith (+) ua' hostUaDownloads uas')
+                           ) (Map.empty :: Map.HashMap T.Text Double,
+                              Map.empty :: Map.HashMap T.Text Double) $
+                           Map.toList hosts_uas'
+                   liftIO $ putStrLn $
+                              "day " ++ show day ++
+                              "\tdownloads: " ++ show dayDownloads ++
+                              "\tgeo: " ++ show (Map.size geo') ++
+                              "\tuas: " ++ show (Map.size uas')
+                   let day' = T.pack $ show day
+                   return (path,
+                           Map.insertWith (+) day' dayDownloads downloads,
+                           Map.insertWith (Map.unionWith (+)) day' geo' geo,
+                           Map.insertWith (Map.unionWith (+)) day' uas' uas)
+               ) (undefined, Map.empty, Map.empty, Map.empty) $
+               \(path, downloads, geo, uas) ->
+                   do let totalDownloads =
+                              sum $ Map.elems downloads
+                          jsonName = hex $ MD5.hash path
+                          jsonPath = dataPath ++ BC.unpack jsonName ++ ".json"
+                      liftIO $ putStrLn $ BC.unpack path
+                      liftIO $ LBC.writeFile jsonPath $ JSON.encode $ JSON.object [
+                                        "downloads" .= mapToObject downloads,
+                                        "geo" .= mapToObject geo,
+                                        "user_agents" .= mapToObject uas
+                                       ]
+                      return (path, jsonName, totalDownloads)
+                      
+           aggregateAll :: Aggregate (BC.ByteString, BC.ByteString, Double) (ResourceT IO) ()
+           aggregateAll =
+               foldAggregate 
+               (\index (!path, !jsonName, !totalDownloads) ->
+                    do let k = decodeUtf8 path 
+                           v = JSON.object [ 
+                                "json" .= jsonName,
+                                "downloads" .= totalDownloads
+                               ]
+                       return $ (k .= v) : index
+               ) [] $
+               \index ->
+                   do liftIO $ saveIndex $ JSON.object index
+                      liftIO $ saveFileSizes refFileSizes
+                      return ()
        
        let comparePath (k, _) (k', _) =
                kPath k == kPath k'
            compareDate (k, _) (k', _) =
                kDate k == kDate k'
                
-       (fileSizes', index') <-
-           foldM 
-           (\(!fileSizes', !index') path_kvs ->
-                do let path = {-# SCC "path" #-} kPath $ fst $ head path_kvs
-                   (fileSize, fileSizes'') <- liftIO $ getFileSize fileSizes' path
-                   (downloads, geo, uas) <- 
-                       foldM 
-                       (\(!downloads, !geo, !uas) date_kvs ->
-                           do let day = T.pack $ show $
-                                        kDate $ fst $ head date_kvs
-                                  hosts_uas' :: Map.HashMap (BC.ByteString, BC.ByteString) Int
-                                  hosts_uas' =
-                                      foldl' (\hosts_uas (k, v) ->
-                                                  let host_ua = (kHost k, kUserAgent k)
-                                                      size = vSize v
-                                                  in Map.insertWith (+)
-                                                     host_ua size hosts_uas
-                                             ) Map.empty date_kvs
-                                  -- | Limit to max. 1 file size by (host, ua) per day
-                                  hosts_uas'' :: Map.HashMap (BC.ByteString, BC.ByteString) Double
-                                  hosts_uas'' =
-                                      Map.map ((/ (fromIntegral fileSize)) .
-                                               fromIntegral .
-                                               min fileSize) hosts_uas'
-                                  dayDownloads =
-                                      sum $
-                                      snd `map` Map.toList hosts_uas''
-                              (geo', uas') <- 
-                                  liftIO $
-                                  foldM 
-                                  (\(!geo', !uas') ((host, ua), hostUaDownloads) ->
-                                       do let unknownCountry
-                                                  | ':' `BC.elem` host = "v6"
-                                                  | otherwise = "*"
-                                          country <- maybe unknownCountry (decodeUtf8 . Geo.geoCountryCode) <$>
-                                                     geoLocate host
-                                          mUa <- uaFilter ua
-                                          ua' <- case mUa of
-                                                   Just ua' -> return ua'
-                                                   Nothing ->
-                                                       do --putStrLn $ "Unknown user-agent: " ++ show ua
-                                                          return "*"
-                                          return (Map.insertWith (+) 
-                                                  country hostUaDownloads
-                                                  geo',
-                                                  Map.insertWith (+)
-                                                  ua' hostUaDownloads
-                                                  uas')
-                                  ) (Map.empty :: Map.HashMap T.Text Double,
-                                     Map.empty :: Map.HashMap T.Text Double) $
-                                  Map.toList hosts_uas''
-                              liftIO $ putStrLn $
-                                     "day " ++ show day ++
-                                     " downloads: " ++ show dayDownloads ++
-                                     " geo: " ++ show geo' ++
-                                     " uas: " ++ show uas'
-                              return (Map.insertWith (+) day dayDownloads downloads,
-                                      Map.insertWith (Map.unionWith (+)) day geo' geo,
-                                      Map.insertWith (Map.unionWith (+)) day uas' uas)
-                       ) (Map.empty, Map.empty, Map.empty) $
-                       groupBy compareDate path_kvs
-
-                   let totalDownloads =
-                           sum $ Map.elems downloads
-                       jsonName = hex $ MD5.hash path
-                       jsonPath = dataPath ++ BC.unpack jsonName ++ ".json"
-                   liftIO $ 
-                     do putStrLn $ BC.unpack path
-                        LBC.writeFile jsonPath $ JSON.encode $ JSON.object [
-                                "downloads" .= Map.toList downloads,
-                                "geo" .= Map.toList geo,
-                                "user_agents" .= Map.toList uas
-                               ]
-                   let index'' =
-                           seq totalDownloads $
-                           Map.insert path
-                                  (JSON.object [ 
-                                            "json" .= jsonName,
-                                            "downloads" .= totalDownloads
-                                           ])
-                           index'
-                   return (fileSizes'', index'')
-           ) (fileSizes, index) $
-           groupBy comparePath kvs
+       return $ groupAggregate comparePath
+              (groupAggregate compareDate aggregateByDay aggregateByPath) aggregateAll
                       
-       liftIO $ saveFileSizes fileSizes'
-       liftIO $ saveIndex index'
-    
 saveIndex :: JSON.ToJSON json => 
              json -> IO ()
 saveIndex = 
@@ -159,35 +196,37 @@ fetchFileSize path
 sizesFile :: FilePath
 sizesFile = "sizes.json"
 
-type FileSizes = Map.HashMap BC.ByteString Int
+type FileSizes = Map.HashMap BC.ByteString (Maybe Int)
 
-loadFileSizes :: IO FileSizes
+loadFileSizes :: IO (IORef FileSizes)
 loadFileSizes = catch loadSizes (const $ return Map.empty :: SomeException -> IO FileSizes) >>=
                 (\a ->
                      do print a
                         return a
-                )
+                ) >>=
+                newIORef
     where loadSizes :: IO FileSizes
           loadSizes = do Just json <- JSON.decode <$> LBC.readFile sizesFile
                          return json
 
-saveFileSizes :: FileSizes -> IO ()
-saveFileSizes =
+saveFileSizes :: IORef FileSizes -> IO ()
+saveFileSizes refFileSizes =
+    readIORef refFileSizes >>=
     LBC.writeFile sizesFile . JSON.encode
         
-getFileSize :: FileSizes -> BC.ByteString -> IO (Int, FileSizes)
-getFileSize fileSizes path =
-    do case path `Map.lookup` fileSizes of
-         Just size -> return (size, fileSizes)
-         Nothing ->
-             do mSize <- fetchFileSize path
-                case mSize of
-                  Just size ->
-                      do let fileSizes' =
-                                    Map.insert path size fileSizes
-                         return (size, fileSizes')
+getFileSize :: IORef FileSizes -> BC.ByteString -> IO Int
+getFileSize refFileSizes path =
+    do fileSizes <- readIORef refFileSizes
+       mSize <- case path `Map.lookup` fileSizes of
+                  Just mSize -> 
+                      return mSize
                   Nothing ->
-                      return (fallbackSize, fileSizes)
+                      do mSize <- fetchFileSize path
+                         writeIORef refFileSizes $
+                                    Map.insert path mSize fileSizes
+                         return mSize
+                         
+       return $ fromMaybe fallbackSize mSize
                       
     where fallbackSize = 100 * 1024 * 1024  -- 100 MB
 
@@ -198,8 +237,8 @@ main =
     do db <- DB.open "state" $ DB.defaultOptions { DB.createIfMissing = True }
        iter <- DB.iterOpen db def
        DB.iterFirst iter
-       kvs <- lazyConsume $
-              sourceIter iter $=
+       aggregator <- aggregateStats
+       sourceIter iter $$
               CL.mapMaybeM 
               (\(k, v) -> 
                   case ({-# SCC "convertK" #-} safeConvert k, 
@@ -212,5 +251,5 @@ main =
                     (_, Left e) ->
                         do liftIO $ putStrLn $ "Cannot convert value: " ++ show e
                            return Nothing
-              )
-       aggregateStats kvs
+              ) =$
+              aggregateSink aggregator
