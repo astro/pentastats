@@ -159,7 +159,7 @@ group (req : reqs) =
 normalizePaths :: [Request] -> [Request]
 normalizePaths = map normalizePath'
   where normalizePath' req =
-            req { reqPath = BC.takeWhile (/= '?') $ rmDots $ reqPath req }
+            req { reqPath = rmDupSlashes $ BC.takeWhile (/= '?') $ rmDots $ reqPath req }
         rmDots b = case "://" `BC.breakSubstring` b of
                      (scheme, b')
                          | BC.take 3 b' == "://" ->
@@ -179,6 +179,12 @@ normalizePaths = map normalizePath'
           | BC.length b >= 3 &&
             BC.take 3 b == "/./" = rmDots' $ BC.drop 2 b
           | otherwise = b
+        rmDupSlashes b = case "//" `BC.breakSubstring` b of
+                           (b', b'') | BC.length b'' >= 2 &&
+                                       BC.take 2 b'' == "//" ->
+                                         b' `BC.append` rmDupSlashes (BC.tail b'')
+                           (b', b'') | BC.null b'' ->
+                                         b'
 
 -- Returns amount of keys written
 writeReqs :: DB.DB -> BC.ByteString -> [Request] -> ResourceT IO Int
