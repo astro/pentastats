@@ -135,7 +135,7 @@ parseFile defaultHostname s
       Done rest req ->
           req : parseFile defaultHostname rest
       Fail rest _ errMsg ->
-          trace errMsg $
+          trace (errMsg ++ " in " ++ show (LBC.take 32 rest)) $
           let rest' = LBC.dropWhile (/= '\n') rest
           in parseFile defaultHostname $ LBC.tail rest'
 
@@ -159,7 +159,7 @@ group (req : reqs) =
 normalizePaths :: [Request] -> [Request]
 normalizePaths = map normalizePath'
   where normalizePath' req =
-            req { reqPath = rmDupSlashes $ BC.takeWhile (/= '?') $ rmDots $ reqPath req }
+            req { reqPath = BC.takeWhile (/= '?') $ rmDots $ reqPath req }
         rmDots b = case "://" `BC.breakSubstring` b of
                      (scheme, b')
                          | BC.take 3 b' == "://" ->
@@ -168,7 +168,7 @@ normalizePaths = map normalizePath'
                                  path' = rmDots' path
                              in BC.concat 
                                     [scheme, "://",
-                                     host, path']
+                                     host, rmDupSlashes path']
                      _ ->
                          rmDots' b
         rmDots' b
