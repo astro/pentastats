@@ -29,14 +29,33 @@ nav ul {
     list-style-type: none;
     margin: 0;
     padding: 0;
-    height: 42em;
+}
+nav ul li {
+    white-space: nowrap;
+}
+nav > ul {
+    height: 44em;
     overflow: auto;
     background-color: #ccf;
     border-left: #77f;
 }
+nav ul.children {
+    background-color: #ddf;
+    font-size: 80%;
+    padding: 0 0 0 1em;
+}
 section {
     margin: 0 0 0 20em;
 }
+section h2 {
+    font-weight: bold;
+    margin: 0.5em 0 0;
+    padding: 0;
+    text-align: center;
+    font-size: 110%;
+    color: #666;
+}
 .chart {
-    height: 14em;
+    height: 13em;
+    margin: 0 0 0.5em;
 }

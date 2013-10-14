@@ -8,6 +8,15 @@ var app = angular.module('pentastats', []);
 // 	});
 // });
 
+function cmpByK(p1, p2) {
+    if (p1.k < p2.k)
+	return -1;
+    else if (p1.k > p2.k)
+	return 1;
+    else
+	return 0;
+}
+
 app.controller('SelectController', function($scope, $http, $rootScope, $location) {
     $rootScope.paths = [];
     $http({
@@ -15,6 +24,7 @@ app.controller('SelectController', function($scope, $http, $rootScope, $location
 	url: "data/index.json"
     }).success(function(data) {
 	$rootScope.groups = {};
+	$scope.maxDownloads = 0;
 	var k;
 	for(k in data)
 	    if (data.hasOwnProperty(k)) {
@@ -27,31 +37,64 @@ app.controller('SelectController', function($scope, $http, $rootScope, $location
 		var xs = pLast.split(/\./);
 		var base = ps.join("/") + "/" + xs[0];
 		var ext = "" + xs[1];
-		if (!$scope.groups.hasOwnProperty(base))
-		    $scope.groups[base] = [];
+		if (!$rootScope.groups.hasOwnProperty(base))
+		    $rootScope.groups[base] = [];
 		data[k].ext = ext;
-		$scope.groups[base].push(data[k]);
+		$rootScope.groups[base].push(data[k]);
 	    }
-	var paths = [];
-	for(k in $scope.groups) {
-	    var g = $scope.groups[k];
+	var paths = {};
+	for(k in $rootScope.groups) {
+	    var g = $rootScope.groups[k];
 	    var downloads = 0;
 	    g.forEach(function(path) {
 		downloads += path.downloads;
 	    });
-	    paths.push({
-		k: k,
-		title: k + " (" + Math.ceil(downloads) + ")"
-	    });
+	    if (downloads > $scope.maxDownloads)
+		$scope.maxDownloads = downloads;
+	    var m, base, k1;
+	    if ((m = k.match(/^(.+?:\/\/[^\/]+)(.*)$/))) {
+		base = m[1];
+		k1 = m[2];
+	    } else {
+		base = "<unknown>";
+		k1 = k;
+	    }
+
+	    if (base && k1) {
+		if (!paths.hasOwnProperty(base))
+		    paths[base] = {
+			title: base,
+			k: base,
+			downloads: 0,
+			children: {}
+		    };
+		paths[base].downloads += downloads;
+		paths[base].children[k1] = {
+		    k: k,
+		    title: k1,
+		    downloads: Math.ceil(downloads)
+		};
+	    } else if (base) {
+		if (!paths.hasOwnProperty(base))
+		    paths[base] = {
+			downloads: 0,
+			children: {}
+		    };
+		paths[base].k = k;
+		paths[base].title = base;
+		paths[base].downloads += downloads;
+	    }
 	}
-	$scope.paths = paths.sort(function(p1, p2) {
-	    if (p1.k < p2.k)
-		return -1;
-	    else if (p1.k > p2.k)
-		return 1;
-	    else
-		return 0;
-	});
+	$scope.maxDownloadsSqrt = Math.sqrt($scope.maxDownloads);
+	$scope.paths = Object.keys(paths).map(function(base) {
+	    var path = paths[base];
+	    path.children =
+		Object.keys(path.children).map(function(k1) {
+		    return path.children[k1];
+		}).sort(cmpByK);
+	    path.downloads = Math.ceil(path.downloads);
+	    return path;
+	}).sort(cmpByK);
 	console.log("paths", $scope.paths);
     });
     // TODO: http error handling
@@ -59,6 +102,14 @@ app.controller('SelectController', function($scope, $http, $rootScope, $location
     $scope.select = function(p) {
 	console.log("select", p);
 	$location.path(p.k);
+    };
+
+    $scope.counterColor = function(p) {
+	var shade = 127 - Math.ceil(127 * Math.sqrt(p.downloads) / $scope.maxDownloadsSqrt);
+	return "rgb(" +
+	    shade + "," + 
+	    shade + "," + 
+	    shade + ")";
     };
 });
 

@@ -18,16 +18,31 @@
     <nav ng-controller="SelectController">
       <ul>
 	<li ng-repeat="p in paths">
-	  <a href="#{{p.k}}" ng-click="select(p)">{{p.title}}</a>
+	  <a href="#{{p.k}}"
+	     ng-click="p.expand = !p.expand">{{p.title}}</a>
+	  <span class="download-counter"
+		style="color: {{counterColor(p)}}">{{p.downloads}}</span>
+	  <ul class="children"
+	      ng-show="p.expand">
+	    <li ng-repeat="p1 in p.children">
+	      <a href="#{{p1.k}}"
+		 ng-click="select(p1)">{{p1.title}}</a>
+	      <span class="download-counter"
+		    style="color: {{counterColor(p1)}}">{{p1.downloads}}</span>
+	    </li>
+	  </ul>
 	</li>
       </ul>
     </nav>
 
     <section ng-controller="GraphsController">
+      <h2>Downloads by file extension</h2>
       <div class="chart" chart-container="chart.ext">
       </div>
+      <h2>Downloads by geographic origin</h2>
       <div class="chart" chart-container="chart.geo">
       </div>
+      <h2>Downloads by user-agent</h2>
       <div class="chart" chart-container="chart.user_agents">
       </div>
     </section>
