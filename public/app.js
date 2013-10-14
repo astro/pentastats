@@ -1,28 +1,28 @@
 var MAX_KEYS = 6;
 
 var app = angular.module('pentastats', []);
-app.config(function($routeProvider, $locationProvider) {
-    $routeProvider.
-	when("/:k*", {
-	    controller: 'GraphsController'
-	}).
-	otherwise({
-	    controller: 'SelectController'
-	});
-});
+// app.config(function($routeProvider, $locationProvider) {
+//     $routeProvider.
+// 	otherwise({
+// 	    controller: 'GraphsController'
+// 	});
+// });
 
-app.controller('SelectController', function($scope, $http, $rootScope, $routeParams, $route, $location) {
-    console.log("$routeParams'", $routeParams, $route, $location);
+app.controller('SelectController', function($scope, $http, $rootScope, $location) {
     $rootScope.paths = [];
     $http({
 	method: 'GET',
 	url: "data/index.json"
     }).success(function(data) {
-	$scope.groups = {};
+	$rootScope.groups = {};
 	var k;
 	for(k in data)
 	    if (data.hasOwnProperty(k)) {
-		var ps = k.split(/\//g);
+		var path = mapPath(k);
+		if (!path)
+		    return;
+
+		var ps = path.split(/\//g);
 		var pLast = ps.pop();
 		var xs = pLast.split(/\./);
 		var base = ps.join("/") + "/" + xs[0];
@@ -35,20 +35,16 @@ app.controller('SelectController', function($scope, $http, $rootScope, $routePar
 	var paths = [];
 	for(k in $scope.groups) {
 	    var g = $scope.groups[k];
-	    var downloads = 0, peak;
-	    peak = null;
+	    var downloads = 0;
 	    g.forEach(function(path) {
 		downloads += path.downloads;
-		if (!peak || peak > path.peak)
-		    peak = path.peak;
 	    });
 	    paths.push({
 		k: k,
-		peak: peak,
 		title: k + " (" + Math.ceil(downloads) + ")"
 	    });
 	}
-	$rootScope.paths = paths.sort(function(p1, p2) {
+	$scope.paths = paths.sort(function(p1, p2) {
 	    if (p1.k < p2.k)
 		return -1;
 	    else if (p1.k > p2.k)
@@ -59,25 +55,32 @@ app.controller('SelectController', function($scope, $http, $rootScope, $routePar
 	console.log("paths", $scope.paths);
     });
     // TODO: http error handling
+
+    $scope.select = function(p) {
+	console.log("select", p);
+	$location.path(p.k);
+    };
 });
 
 app.directive('chartContainer', function() {
     return {
 	link: function(scope, element, attrs) {
-		// element.attr('width', window.innerWidth);
-		// element.attr('height', 200);
 	    var plot;
 
-	    scope.$watch('data', function() {
-		if (!scope.data)
+	    scope.$watch(function() {
+		console.log("cC $watch");
+		var data = scope.$eval(attrs.chartContainer);
+		console.log("cC data", data);
+		if (!data)
 		    return;
+
 		if (plot) {
 		    plot.shutdown();
 		    $(element[0]).empty();
 		}
 
-		console.log("plot", scope.data);
-		plot = $.plot(element[0], scope.data, {
+		console.log("plot", data);
+		plot = $.plot(element[0], data, {
 		    xaxis: {
 			mode: 'time',
 			timeformat: "%Y-%m-%d"
@@ -92,12 +95,98 @@ app.directive('chartContainer', function() {
     };
 });
 
-app.controller('GraphsController', function($scope, $routeParams, $http, $route, $location) {
-    console.log("$routeParams", $routeParams, $route, $location);
-    return;
 
-    $scope.$watch('pane.fileKey', function() {
-	var g = $scope.groups && $scope.groups[$scope.pane.fileKey];
+function dataToChart(ks) {
+    var chart = [];
+    var day, key, keyTotals = {};
+    for(key in ks) {
+	if (!keyTotals.hasOwnProperty(key))
+	    keyTotals[key] = 0;
+	for(var day in ks[key]) {
+	    keyTotals[key] += ks[key][day];
+	}
+    }
+    console.log("keyTotals", keyTotals);
+    var topKeys = Object.keys(keyTotals).sort(function(k1, k2) {
+	var t1 = keyTotals[k1];
+	var t2 = keyTotals[k2];
+	if (t1 > t2)
+	    return -1;
+	else if (t1 < t2)
+	    return 1;
+	else
+	    return 0;
+    });
+    if (topKeys.length > MAX_KEYS) {
+	var othersInTop =
+	    topKeys.indexOf("*") >= 0 &&
+	    topKeys.indexOf("*") < MAX_KEYS;
+	topKeysLen = othersInTop ?
+	    MAX_KEYS :
+	    MAX_KEYS - 1;
+	topKeys = topKeys.slice(0, MAX_KEYS);
+	if (!othersInTop)
+	    topKeys.push("*");
+	var otherKeys = topKeys.slice(MAX_KEYS);
+	otherKeys.forEach(function(key) {
+	    if (key == "*")
+		return;
+
+	    for(var day in ks[key]) {
+		if (!ks["*"].hasOwnProperty(day))
+		    ks["*"][day] = 0;
+		ks["*"][day] += ks[key][day];
+	    }
+	    delete ks[key];
+	});
+    }
+    console.log("topKeys", topKeys);
+    /* For stacking: */
+    var dayHeight = {};
+    topKeys.reverse().forEach(function(key) {
+	var series = {
+	    label: key == "*" ?
+		"Other" :
+		key + " (" + Math.floor(keyTotals[key]) + ")",
+	    bars: {
+		show: true,
+		barWidth: Math.ceil(86400 * 1000),
+		lineWidth: 0,
+		fill: 1
+	    },
+	    data: []
+	};
+	for(var day in ks[key]) {
+	    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+		var time = new Date(day).getTime();
+		var height = ks[key][day];
+		if (!dayHeight.hasOwnProperty(day))
+		    dayHeight[day] = 0;
+		series.data.push([time, dayHeight[day] + height, dayHeight[day]]);
+		dayHeight[day] += height;
+	    }
+	}
+	chart.push(series);
+    });
+
+    return chart;
+};
+
+app.controller('GraphsController', function($scope, $rootScope, $location, $http) {
+    $scope.currentPath = null;
+    $scope.load = function() {
+	if (!$rootScope.groups)
+	    /* defer */
+	    return;
+
+	if ($scope.currentPath == $location.path())
+	    return;
+	$scope.currentPath = $location.path();
+	console.log("load", $scope.currentPath);
+
+	var g = $rootScope.groups &&
+	    $rootScope.groups[$scope.currentPath] ||
+	    $rootScope.groups[$scope.currentPath.replace(/^\//, "")];
 	if (!g)
 	    return;
 
@@ -110,117 +199,52 @@ app.controller('GraphsController', function($scope, $routeParams, $http, $route,
 	    $http({
 		method: 'GET',
 		url: "data/" + path.json + ".json"
-	    }).success(function(data) {
+	    }).success(function(res) {
 		/* Transpose & merge into datas.* */
 
 		if (!datas.ext.hasOwnProperty(path.ext))
 		    datas.ext[path.ext] = {};
-		for(var day in data.downloads) {
+		for(var day in res.downloads) {
 		    if (!datas.ext[path.ext].hasOwnProperty(day))
 			datas.ext[path.ext][day] = 0;
-		    datas.ext[path.ext][day] += data.downloads[day];
+		    datas.ext[path.ext][day] += res.downloads[day];
 		}
 
-		for(var day in data.user_agents) {
-		    for(var ua in data.user_agents[day]) {
+		for(var day in res.user_agents) {
+		    for(var ua in res.user_agents[day]) {
 			if (!datas.user_agents.hasOwnProperty(ua))
 			    datas.user_agents[ua] = {};
 			if (!datas.user_agents[ua].hasOwnProperty(day))
 			    datas.user_agents[ua][day] = 0;
-			datas.user_agents[ua][day] += data.user_agents[day][ua];
+			datas.user_agents[ua][day] += res.user_agents[day][ua];
 		    }
 		}
 
-		for(var day in data.geo) {
-		    for(var country in data.geo[day]) {
+		for(var day in res.geo) {
+		    for(var country in res.geo[day]) {
 			if (!datas.geo.hasOwnProperty(country))
 			    datas.geo[country] = {};
 			if (!datas.geo[country].hasOwnProperty(day))
 			    datas.geo[country][day] = 0;
-			datas.geo[country][day] += data.geo[day][country];
+			datas.geo[country][day] += res.geo[day][country];
 		    }
 		}
 
-		$scope.rerender();
+		$scope.chart = {
+		    ext: dataToChart(datas.ext),
+		    geo: dataToChart(datas.geo),
+		    user_agents: dataToChart(datas.user_agents),
+		};
 	    });
 	    // TODO: http error handling
 	});
 
-	$scope.rerender = function() {
-	    $scope.data = [];
-	    var ks = datas[$scope.pane.divKey];
-	    var day, key, keyTotals = {};
-	    for(key in ks) {
-		if (!keyTotals.hasOwnProperty(key))
-		    keyTotals[key] = 0;
-		for(var day in ks[key]) {
-		    keyTotals[key] += ks[key][day];
-		}
-	    }
-	    console.log("keyTotals", keyTotals);
-	    var topKeys = Object.keys(keyTotals).sort(function(k1, k2) {
-		var t1 = keyTotals[k1];
-		var t2 = keyTotals[k2];
-		if (t1 > t2)
-		    return -1;
-		else if (t1 < t2)
-		    return 1;
-		else
-		    return 0;
-	    });
-	    if (topKeys.length > MAX_KEYS) {
-		var othersInTop =
-		    topKeys.indexOf("*") >= 0 &&
-		    topKeys.indexOf("*") < MAX_KEYS;
-		topKeysLen = othersInTop ?
-		    MAX_KEYS :
-		    MAX_KEYS - 1;
-		topKeys = topKeys.slice(0, MAX_KEYS);
-		if (!othersInTop)
-		    topKeys.push("*");
-		var otherKeys = topKeys.slice(MAX_KEYS);
-		otherKeys.forEach(function(key) {
-		    if (key == "*")
-			return;
+    };
 
-		    for(var day in ks[key]) {
-			if (!ks["*"].hasOwnProperty(day))
-			    ks["*"][day] = 0;
-			ks["*"][day] += ks[key][day];
-		    }
-		    delete ks[key];
-		});
-	    }
-	    console.log("topKeys", topKeys);
-	    /* For stacking: */
-	    var dayHeight = {};
-	    topKeys.reverse().forEach(function(key) {
-		var series = {
-		    label: key == "*" ?
-			"Other" :
-			key + " (" + Math.floor(keyTotals[key]) + ")",
-		    bars: {
-			show: true,
-			barWidth: Math.ceil(86400 * 1000),
-			lineWidth: 0,
-			fill: 1
-		    },
-		    data: []
-		};
-		for(var day in ks[key]) {
-		    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-			var time = new Date(day).getTime();
-			var height = ks[key][day];
-			if (!dayHeight.hasOwnProperty(day))
-			    dayHeight[day] = 0;
-			series.data.push([time, dayHeight[day] + height, dayHeight[day]]);
-			dayHeight[day] += height;
-		    }
-		}
-		$scope.data.push(series);
-	    });
-	};
+    $rootScope.$watch(function() {
+	$scope.load();
     });
+    $scope.load();
 });
 
 function pad(s, padding, len) {

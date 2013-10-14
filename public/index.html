@@ -7,6 +7,7 @@
     <script src="flot/jquery.min.js" type="application/javascript"></script>
     <script src="flot/jquery.flot.min.js" type="application/javascript"></script>
     <script src="flot/jquery.flot.time.min.js" type="application/javascript"></script>
+    <script src="config.js" type="application/javascript"></script>
     <script src="app.js" type="application/javascript"></script>
     <link rel="stylesheet" type="text/css" href="app.css">
   </head>
@@ -17,18 +18,19 @@
     <nav ng-controller="SelectController">
       <ul>
 	<li ng-repeat="p in paths">
-	  <a href="#/{{p.k}}">{{p.title}}</a>
+	  <a href="#{{p.k}}" ng-click="select(p)">{{p.title}}</a>
 	</li>
       </ul>
     </nav>
 
     <section ng-controller="GraphsController">
-      <div class="chart" chart-container style="height: 14em">
+      <div class="chart" chart-container="chart.ext">
+      </div>
+      <div class="chart" chart-container="chart.geo">
+      </div>
+      <div class="chart" chart-container="chart.user_agents">
       </div>
     </section>
 
-    <nav class="bottom">
-      <button ng-click="addPane()">+</button>
-    </nav>
   </body>
 </html>

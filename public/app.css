@@ -1,34 +1,42 @@
 html {
-  margin: 0;
-  padding: 0
+    margin: 0;
+    padding: 0;
+    font-family: sans-serif;
 }
 body {
-  margin: 0;
-  padding: 0;
-  color: #333;
-  background: white;
+    margin: 0;
+    padding: 0;
+    color: #333;
+    background: white;
 }
 h1 {
     font-size: 200%;
     margin: 0;
     padding: 0.1em 0;
 }
-h1, section {
+h1 {
     border-bottom: 1px dashed #777;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     text-align: center;
 }
-.controls {
-    display: inline-block;
-    background-color: #eee;
-    border-radius: 0 0 0.4em 0.4em;
-    padding: 0.2em 1em;
+nav {
+    float: left;
+    width: 20em;
     margin: 0;
+    box-shadow: 0 8px 4px rgba(0, 0, 0, 0.3);
 }
-.controls .fileKey {
-    max-width: 25em;
+nav ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+    height: 42em;
+    overflow: auto;
+    background-color: #ccf;
+    border-left: #77f;
 }
-.bottom {
-    margin: 1em 0 0;
-    text-align: right;
+section {
+    margin: 0 0 0 20em;
+}
+.chart {
+    height: 14em;
 }
