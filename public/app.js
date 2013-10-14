@@ -1,19 +1,19 @@
 var MAX_KEYS = 6;
 
 var app = angular.module('pentastats', []);
-
-app.controller('MainController', function($scope, $http) {
-    $scope.panes = [];
-    $scope.addPane = function() {
-	var last = $scope.panes[$scope.panes.length - 1];
-	fileKey = last && last.fileKey;
-	$scope.panes.push({
-	    fileKey: fileKey
+app.config(function($routeProvider, $locationProvider) {
+    $routeProvider.
+	when("/:k*", {
+	    controller: 'GraphsController'
+	}).
+	otherwise({
+	    controller: 'SelectController'
 	});
-    };
-    $scope.addPane();
+});
 
-    $scope.paths = [];
+app.controller('SelectController', function($scope, $http, $rootScope, $routeParams, $route, $location) {
+    console.log("$routeParams'", $routeParams, $route, $location);
+    $rootScope.paths = [];
     $http({
 	method: 'GET',
 	url: "data/index.json"
@@ -48,7 +48,7 @@ app.controller('MainController', function($scope, $http) {
 		title: k + " (" + Math.ceil(downloads) + ")"
 	    });
 	}
-	$scope.paths = paths.sort(function(p1, p2) {
+	$rootScope.paths = paths.sort(function(p1, p2) {
 	    if (p1.k < p2.k)
 		return -1;
 	    else if (p1.k > p2.k)
@@ -56,6 +56,7 @@ app.controller('MainController', function($scope, $http) {
 	    else
 		return 0;
 	});
+	console.log("paths", $scope.paths);
     });
     // TODO: http error handling
 });
@@ -91,8 +92,9 @@ app.directive('chartContainer', function() {
     };
 });
 
-app.controller('PaneController', function($scope, $http) {
-    $scope.pane.divKey = 'geo';
+app.controller('GraphsController', function($scope, $routeParams, $http, $route, $location) {
+    console.log("$routeParams", $routeParams, $route, $location);
+    return;
 
     $scope.$watch('pane.fileKey', function() {
 	var g = $scope.groups && $scope.groups[$scope.pane.fileKey];

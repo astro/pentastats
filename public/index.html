@@ -11,28 +11,18 @@
     <link rel="stylesheet" type="text/css" href="app.css">
   </head>
 
-  <body ng-controller="MainController">
+  <body>
     <h1>HTTP Log Statistics</h1>
 
-    <section ng-repeat="pane in panes" ng-controller="PaneController">
-      <p class="controls">
-	<label>
-	  Path:
-	  <select class="fileKey"
-		  ng-model="pane.fileKey"
-		  ng-options="p.k as p.title for p in paths">
-	  </select>
-	</label>
-	<label>
-	  by
-	  <select ng-model="pane.divKey" ng-change="rerender()">
-	    <option value="geo">geolocation</option>
-	    <option value="ext">extension</option>
-	    <option value="user_agents">user-agents</option>
-	  </select>
-	</label>
-      </p>
+    <nav ng-controller="SelectController">
+      <ul>
+	<li ng-repeat="p in paths">
+	  <a href="#/{{p.k}}">{{p.title}}</a>
+	</li>
+      </ul>
+    </nav>
 
+    <section ng-controller="GraphsController">
       <div class="chart" chart-container style="height: 14em">
       </div>
     </section>
