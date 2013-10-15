@@ -29,18 +29,17 @@ app.controller('SelectController', function($scope, $http, $rootScope, $location
 	for(k in data)
 	    if (data.hasOwnProperty(k)) {
 		var path = mapPath(k);
-		if (!path)
-		    return;
-
-		var ps = path.split(/\//g);
-		var pLast = ps.pop();
-		var xs = pLast.split(/\./);
-		var base = ps.join("/") + "/" + xs[0];
-		var ext = xs[1] || "";
-		if (!$rootScope.groups.hasOwnProperty(base))
-		    $rootScope.groups[base] = [];
-		data[k].ext = ext;
-		$rootScope.groups[base].push(data[k]);
+		if (path) {
+		    var ps = path.split(/\//g);
+		    var pLast = ps.pop();
+		    var xs = pLast.split(/\./);
+		    var base = ps.join("/") + "/" + xs[0];
+		    var ext = xs[1] || "";
+		    if (!$rootScope.groups.hasOwnProperty(base))
+			$rootScope.groups[base] = [];
+		    data[k].ext = ext;
+		    $rootScope.groups[base].push(data[k]);
+		}
 	    }
 	var paths = {};
 	for(k in $rootScope.groups) {
