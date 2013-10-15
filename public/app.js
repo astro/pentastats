@@ -95,12 +95,10 @@ app.controller('SelectController', function($scope, $http, $rootScope, $location
 	    path.downloads = Math.ceil(path.downloads);
 	    return path;
 	}).sort(cmpByK);
-	console.log("paths", $scope.paths);
     });
     // TODO: http error handling
 
     $scope.select = function(p) {
-	console.log("select", p);
 	$location.path(p.k);
     };
 
@@ -123,9 +121,7 @@ app.directive('chartContainer', function() {
 	    var plot;
 
 	    scope.$watch(function() {
-		console.log("cC $watch");
 		var data = scope.$eval(attrs.chartContainer);
-		console.log("cC data", data);
 		if (!data)
 		    return;
 
@@ -134,7 +130,6 @@ app.directive('chartContainer', function() {
 		    $(element[0]).empty();
 		}
 
-		console.log("plot", data);
 		plot = $.plot(element[0], data, {
 		    xaxis: {
 			mode: 'time',
@@ -161,7 +156,6 @@ function dataToChart(ks) {
 	    keyTotals[key] += ks[key][day];
 	}
     }
-    console.log("keyTotals", keyTotals);
     var topKeys = Object.keys(keyTotals).sort(function(k1, k2) {
 	var t1 = keyTotals[k1];
 	var t2 = keyTotals[k2];
@@ -195,7 +189,6 @@ function dataToChart(ks) {
 	    delete ks[key];
 	});
     }
-    console.log("topKeys", topKeys);
     /* For stacking: */
     var dayHeight = {};
     topKeys.reverse().forEach(function(key) {
@@ -237,7 +230,6 @@ app.controller('GraphsController', function($scope, $rootScope, $location, $http
 	if ($scope.currentPath == $location.path())
 	    return;
 	$scope.currentPath = $location.path();
-	console.log("load", $scope.currentPath);
 
 	var g = $rootScope.groups &&
 	    $rootScope.groups[$scope.currentPath] ||
