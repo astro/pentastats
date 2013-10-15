@@ -105,7 +105,11 @@ app.controller('SelectController', function($scope, $http, $rootScope, $location
     };
 
     $scope.counterColor = function(p) {
-	var shade = 127 - Math.ceil(127 * Math.sqrt(p.downloads) / $scope.maxDownloadsSqrt);
+	var shade =
+	    Math.max(
+		0,
+		127 - Math.ceil(127 * Math.sqrt(p.downloads) / $scope.maxDownloadsSqrt)
+	    );
 	return "rgb(" +
 	    shade + "," + 
 	    shade + "," + 

@@ -16,14 +16,14 @@ h1 {
 }
 h1 {
     border-bottom: 1px dashed #777;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
     text-align: center;
 }
 nav {
     float: left;
     width: 20em;
     margin: 0;
-    box-shadow: 0 8px 4px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
 }
 nav ul {
     list-style-type: none;
