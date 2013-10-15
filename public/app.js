@@ -36,7 +36,7 @@ app.controller('SelectController', function($scope, $http, $rootScope, $location
 		var pLast = ps.pop();
 		var xs = pLast.split(/\./);
 		var base = ps.join("/") + "/" + xs[0];
-		var ext = "" + xs[1];
+		var ext = xs[1] || "";
 		if (!$rootScope.groups.hasOwnProperty(base))
 		    $rootScope.groups[base] = [];
 		data[k].ext = ext;
@@ -99,6 +99,7 @@ app.controller('SelectController', function($scope, $http, $rootScope, $location
     // TODO: http error handling
 
     $scope.select = function(p) {
+	console.log("select", p);
 	$location.path(p.k);
     };
 
@@ -130,16 +131,18 @@ app.directive('chartContainer', function() {
 		    $(element[0]).empty();
 		}
 
-		plot = $.plot(element[0], data, {
-		    xaxis: {
-			mode: 'time',
-			timeformat: "%Y-%m-%d"
-		    },
-		    legend: {
-			show: true,
-			sorted: 'reverse'
-		    }
-		});
+		setTimeout(function() {
+		    plot = $.plot(element[0], data, {
+			xaxis: {
+			    mode: 'time',
+			    timeformat: "%Y-%m-%d"
+			},
+			legend: {
+			    show: true,
+			    sorted: 'reverse'
+			}
+		    });
+		}, 1);
 	    });
 	}
     };
@@ -231,12 +234,20 @@ app.controller('GraphsController', function($scope, $rootScope, $location, $http
 	    return;
 	$scope.currentPath = $location.path();
 
-	var g = $rootScope.groups &&
-	    $rootScope.groups[$scope.currentPath] ||
-	    $rootScope.groups[$scope.currentPath.replace(/^\//, "")];
+	var g, k;
+	if ($rootScope.groups) {
+	    k = $scope.currentPath;
+	    g = $rootScope.groups[k];
+	    if (!g) {
+		k = $scope.currentPath.replace(/^\//, "");
+		g = $rootScope.groups[k];
+	    }
+	}
 	if (!g)
 	    return;
+	$scope.selectedPath = k;
 
+	$scope.loading = true;
 	var datas = {
 	    ext: {},
 	    user_agents: {},
@@ -247,6 +258,7 @@ app.controller('GraphsController', function($scope, $rootScope, $location, $http
 		method: 'GET',
 		url: "data/" + path.json + ".json"
 	    }).success(function(res) {
+		$scope.loading = false;
 		/* Transpose & merge into datas.* */
 
 		if (!datas.ext.hasOwnProperty(path.ext))
