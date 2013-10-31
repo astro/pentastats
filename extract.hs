@@ -107,6 +107,9 @@ aggregateStats =
                                     False ->
                                         do name <- fromMaybe "*" <$>
                                                    liftIO (uaFilter ua)
+                                           -- when (name == "*") $
+                                           --      liftIO $ putStrLn $
+                                           --      "Unknown UA: " ++ show ua
                                            return $
                                                   Map.insert ua name uaNames
                              ) Map.empty $
@@ -123,11 +126,11 @@ aggregateStats =
                            ) (Map.empty :: Map.HashMap T.Text Double,
                               Map.empty :: Map.HashMap T.Text Double) $
                            Map.toList hosts_uas'
-                   liftIO $ putStrLn $
-                              "day " ++ show day ++
-                              "\tdownloads: " ++ show dayDownloads ++
-                              "\tgeo: " ++ show (Map.size geo') ++
-                              "\tuas: " ++ show (Map.size uas')
+                   -- liftIO $ putStrLn $
+                   --            "day " ++ show day ++
+                   --            "\tdownloads: " ++ show dayDownloads ++
+                   --            "\tgeo: " ++ show (Map.size geo') ++
+                   --            "\tuas: " ++ show (Map.size uas')
                    return (path,
                            Map.insertWith (+) day dayDownloads downloads,
                            Map.insertWith (Map.unionWith (+)) day geo' geo,
