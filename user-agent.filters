@@ -5,6 +5,7 @@
 "Thunderbird" ^Mozilla/\d+.+Thunderbird/
 "Chrome" ^Mozilla/\d+.+Chrome/
 "Safari" ^Mozilla/\d+.+Safari/
+"Safari" ^Safari/\d
 "WebKit" ^Mozilla/\d+.+AppleWebKit/
 "Konqueror" ^Mozilla/\d+.+Konqueror/
 "Opera" ^Opera/\d+
@@ -15,15 +16,19 @@
 "DoCoMo" ^DoCoMo/\d
 "Android" ^stagefright/\d
 "Android" ^Dalvik/\d
+"Android" ^Android.LVLDM
+"Twitterbot" ^Twitterbot/\d
+"MeeGo" ^MeeGo/\d
 
 
 # Podcasting
 
 "Miro" ^Miro/\d
 "iTunes" ^iTunes
-"iTunes" ^ITMS$
+"iTMS" ^iTMS$
 "BeyondPod" ^Mozilla/\d.+BeyondPod
 "Instacast" ^Instacast/\d
+"Instacast" ^InstacastHD/\d
 "Podcasts" ^Podcasts/\d
 "Podcasts" ^podcasts/\d
 "Zune" ^Zune/\d
@@ -54,6 +59,11 @@
 "Google Listen" ^Google-Listen/\d
 "Downcast" ^Downcast/\d
 "Flipboard" ^Flipboard/\d
+"Banshee" ^Banshee/\d
+"MediaMonkey" ^MediaMonkey \d
+"icatcher" ^icatcher/\d+
+"RSSRadio" ^RSSRadio\d
+"Detlef" ^Detlef/\d
 
 
 # Downloaders
@@ -72,6 +82,10 @@
 "Deluge" ^Deluge
 "Gnome" ^gvfs/\d
 "Android" ^AndroidDownloadManager/\d
+"gFTP" ^gFTP \d
+"Azureus" ^Azureus \d
+"Axel" ^Axel \d
+"FDM" ^FDM \d
 
 
 # Services
@@ -82,6 +96,7 @@
 "msn" ^msnbot
 "Yandex" ^Yandex/\d
 "Yandex" ^Mozilla/\d.+YandexBot/\d
+"Yandex" ^Mozilla/\d.+YandexImages/\d
 "Google" ^Mozilla/\d.+Googlebot/\d
 "Google" ^Googlebot-
 "Baidu" ^Mozilla/\d.+Baiduspider/\d
@@ -103,3 +118,6 @@
 "larbin" ^larbin_\d
 "findlinks" ^findlinks/\d
 "MetaChannels" ^MetaChannels Episodic Show Reader
+"FaceBook" ^facebookexternalhit/\d
+"CocCoc" ^Mozilla/\d.+coccoc/\d
+"GoogleProducer" ^GoogleProducer;
