@@ -194,9 +194,8 @@ function dataToChart(ks) {
     var dayHeight = {};
     topKeys.reverse().forEach(function(key) {
 	var series = {
-	    label: key == "*" ?
-		"Other" :
-		key + " (" + Math.floor(keyTotals[key]) + ")",
+	    label: (key == "*" ? "Other" : key) +
+		" (" + Math.round(keyTotals[key]) + ")",
 	    bars: {
 		show: true,
 		barWidth: Math.ceil(86400 * 1000),
