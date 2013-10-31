@@ -158,7 +158,7 @@ function dataToChart(ks) {
 	    keyTotals[key] += ks[key][day];
 	}
     }
-    var topKeys = Object.keys(keyTotals).sort(function(k1, k2) {
+    var keyTotalsSorted = Object.keys(keyTotals).sort(function(k1, k2) {
 	var t1 = keyTotals[k1];
 	var t2 = keyTotals[k2];
 	if (t1 > t2)
@@ -168,28 +168,27 @@ function dataToChart(ks) {
 	else
 	    return 0;
     });
-    if (topKeys.length > MAX_KEYS) {
-	var othersInTop =
-	    topKeys.indexOf("*") >= 0 &&
-	    topKeys.indexOf("*") < MAX_KEYS;
-	topKeysLen = othersInTop ?
-	    MAX_KEYS :
-	    MAX_KEYS - 1;
-	topKeys = topKeys.slice(0, MAX_KEYS);
-	if (!othersInTop)
+    var topKeys, otherKeys;
+    if (keyTotalsSorted.length > MAX_KEYS) {
+	topKeys = keyTotalsSorted.slice(0, MAX_KEYS);
+	if (topKeys.indexOf("*") < 0)
 	    topKeys.push("*");
-	var otherKeys = topKeys.slice(MAX_KEYS);
+	otherKeys = keyTotalsSorted.slice(MAX_KEYS);
+	if (otherKeys.length > 0 && !ks.hasOwnProperty("*"))
+	    ks["*"] = {};
 	otherKeys.forEach(function(key) {
-	    if (key == "*")
-		return;
-
-	    for(var day in ks[key]) {
-		if (!ks["*"].hasOwnProperty(day))
-		    ks["*"][day] = 0;
-		ks["*"][day] += ks[key][day];
+	    if (key != "*") {
+		for(var day in ks[key]) {
+		    if (!ks["*"].hasOwnProperty(day))
+			ks["*"][day] = 0;
+		    ks["*"][day] += ks[key][day];
+		}
+		delete ks[key];
 	    }
-	    delete ks[key];
 	});
+    } else {
+	topKeys = keyTotalsSorted;
+	otherKeys = [];
     }
     /* For stacking: */
     var dayHeight = {};
