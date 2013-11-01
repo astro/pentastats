@@ -174,18 +174,28 @@ function dataToChart(ks) {
 	if (topKeys.indexOf("*") < 0)
 	    topKeys.push("*");
 	otherKeys = keyTotalsSorted.slice(MAX_KEYS);
-	if (otherKeys.length > 0 && !ks.hasOwnProperty("*"))
-	    ks["*"] = {};
-	otherKeys.forEach(function(key) {
-	    if (key != "*") {
-		for(var day in ks[key]) {
-		    if (!ks["*"].hasOwnProperty(day))
-			ks["*"][day] = 0;
-		    ks["*"][day] += ks[key][day];
+	if (otherKeys.length > 0) {
+	    if (!ks.hasOwnProperty("*"))
+		ks["*"] = {};
+	    otherKeys.forEach(function(key) {
+		if (key != "*") {
+		    for(var day in ks[key]) {
+			if (!ks["*"].hasOwnProperty(day))
+			    ks["*"][day] = 0;
+			ks["*"][day] += ks[key][day];
+		    }
+		    delete ks[key];
 		}
-		delete ks[key];
-	    }
-	});
+	    });
+	    if (!keyTotals.hasOwnProperty("*"))
+		keyTotals["*"] = 0;
+	    otherKeys.forEach(function(key) {
+		if (key != "*") {
+		    keyTotals["*"] += keyTotals[key];
+		    delete keyTotals[key];
+		}
+	    });
+	}
     } else {
 	topKeys = keyTotalsSorted;
 	otherKeys = [];
