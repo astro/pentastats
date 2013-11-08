@@ -3,5 +3,6 @@ function mapPath(path) {
 	replace(/^https:\/\//, "http://").
 	replace(/^http:\/\/www\./, "http://");
 
-    return path;
+    if (/^http:\/\/ftp\.c3d2\.de\//.test(path))
+	return path;
 };
