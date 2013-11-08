@@ -1,5 +1,7 @@
 # Pentastats
 
+[Demo](http://astro.github.io/pentastats/)
+
 Download statistics made for podcasts. Splits data by:
 
 * File type
@@ -50,3 +52,6 @@ dates to create the data files by the front-end in `public/data/`.
 
 *Step 3:* serve the `public/` directory through a Web server. Go there
  with a browser and click through your new statistics.
+
+Still too much resources to click? You can filter and aggregate them
+in `public/config.js`
