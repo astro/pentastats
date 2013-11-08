@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html ng-app="pentastats">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Pentastats</title>
+    <script src="angular.min.js" type="application/javascript"></script>
+    <script src="flot/jquery.min.js" type="application/javascript"></script>
+    <script src="flot/jquery.flot.min.js" type="application/javascript"></script>
+    <script src="flot/jquery.flot.time.min.js" type="application/javascript"></script>
+    <script src="config.js" type="application/javascript"></script>
+    <script src="app.js" type="application/javascript"></script>
+    <link rel="stylesheet" type="text/css" href="app.css">
+  </head>
+
+  <body>
+    <h1>HTTP Log Statistics</h1>
+
+    <nav ng-controller="SelectController">
+      <ul>
+	<li ng-hide="paths">
+	  <img class="loading"
+	       src="loading.gif">
+	</li>
+	<li ng-show="paths"
+	    ng-repeat="p in paths">
+	  <a href="#{{p.k}}"
+	     ng-click="p.expand = !p.expand; select(p)">{{p.title}}</a>
+	  <span class="download-counter"
+		style="color: {{counterColor(p)}}">{{p.downloads}}</span>
+	  <ul class="children"
+	      ng-show="p.expand">
+	    <li ng-repeat="p1 in p.children">
+	      <a href="#{{p1.k}}"
+		 ng-click="select(p1)">{{p1.title}}</a>
+	      <span class="download-counter"
+		    style="color: {{counterColor(p1)}}">{{p1.downloads}}</span>
+	    </li>
+	  </ul>
+	</li>
+      </ul>
+    </nav>
+
+    <section ng-controller="GraphsController">
+      <p ng-hide="chart" style="text-align: center">
+	Select a path on the left hand side!
+      </p>
+      <div ng-show="chart">
+	<h2>{{selectedPath}}</h2>
+	<h3>Downloads by file extension</h3>
+	<img ng-show="loading"
+	     class="loading"
+	     src="loading.gif">
+	<div ng-hide="loading"
+	     class="chart"
+	     chart-container="chart.ext">
+	</div>
+	<h3>Downloads by geographic origin</h3>
+	<img ng-show="loading"
+	     class="loading"
+	     src="loading.gif">
+	<div ng-hide="loading"
+	     class="chart"
+	     chart-container="chart.geo">
+	</div>
+	<h3>Downloads by user-agent</h3>
+	<img ng-show="loading"
+	     class="loading"
+	     src="loading.gif">
+	<div ng-hide="loading"
+	     class="chart"
+	     chart-container="chart.user_agents">
+	</div>
+      </div>
+    </section>
+
+  </body>
+</html>
