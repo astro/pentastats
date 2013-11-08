@@ -13,8 +13,8 @@ Maintains a state database so that you can even rotate your log files.
 
 ## Dependencies
 
-    apt-get install -y libffi6 libgeoip1 libleveldb1
-    # pv comes in handy too
+	# pv is optional
+    apt-get install -y ghc cabal-install libffi6 libgeoip1 libleveldb1 pv
 
 Get [http://dev.maxmind.com/geoip/legacy/geolite/](GeoCityLite.dat)
 and put it under `/usr/share/GeoIP/`
@@ -38,7 +38,9 @@ pv -per < /var/log/apache2/access_log | ./pentalog
 ```
 
 This will update a LevelDB in `state/`. Log entries don't have to be
-ordered at this point.
+ordered at this point. The database is persistent, so you may rotate
+and delete log files after time, as long as you keep the `state/`
+directory.
 
 
 **Step 2:** `extract` aggregated data into `.json` files:
