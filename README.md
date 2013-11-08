@@ -1,4 +1,15 @@
-# Install
+# Pentastats
+
+Download statistics made for podcasts. Splits data by:
+
+* File type
+* Geographic origin
+* User-Agent
+
+Maintains a state database so that you can even rotate your log files.
+
+
+## Dependencies
 
     apt-get install -y libffi6 libgeoip1 libleveldb1
     # pv comes in handy too
@@ -6,47 +17,36 @@
 Get [http://dev.maxmind.com/geoip/legacy/geolite/](GeoCityLite.dat)
 and put it under `/usr/share/GeoIP/`
 
-## Data store
 
+## Installation
 
-## pentalog TODO:
-* document
-* package
-* referrer in keys
-
-## extract TODO:
-* refererrer
-
-## frontend TODO:
-* config: merge & rewrite
-* order by mostrecent peak
-* navigable time
-
-
-## JSON schemas
-
-### public/data/index.json
-
-```json
-{ "/pentaradio/pentaradio-2013-08-27":
-  { json: "EB2614777390DCE637C6CE53CFB5CCF1",
-    peak: "2013-08-28",
-	downloads: 1275.3 } }
+```
+cabal update
+cabal install --only-dependencies .
+cabal configure
+cabal build
 ```
 
-### public/data/????????????????????????????????.json
 
-```json
-{ downloads: {
-    "2013-08-28": 281.5 },
-  "user-agents": {
-  },
-  "geo": {
-    "2013-08-28": {
-	  "DE": 200,
-	  "AT": 30,
-	  "CH": 25
-	}
-  }
-}
+## Usage
+
+*Step 1:* Pipe your logs into `pentalog`, eg:
 ```
+pv -per < /var/log/apache2/access_log | ./pentalog
+```
+
+This will update a LevelDB in `state/`. Log entries don't have to be
+ordered at this point.
+
+
+*Step 2:* `extract` aggregated data into `.json` files:
+```
+./extract
+```
+
+This will iterate the `state/` database in order of filenames and
+dates to create the data files by the front-end in `public/data/`.
+
+
+*Step 3:* serve the `public/` directory through a Web server. Go there
+ with a browser and click through your new statistics.
