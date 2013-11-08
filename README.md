@@ -55,3 +55,8 @@ dates to create the data files by the front-end in `public/data/`.
 
 Still too much resources to click? You can filter and aggregate them
 in `public/config.js`
+
+## Using Pentastats?
+
+Show me your statistics! Also, you may contribute, especially to
+`user-agent.filters`
