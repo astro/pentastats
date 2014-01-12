@@ -35,6 +35,7 @@ data Request = Request {
      reqPath :: !BC.ByteString, 
      reqHost :: !BC.ByteString, 
      reqSize :: !(Maybe Int),
+     reqReferer :: !BC.ByteString,
      reqUserAgent :: !BC.ByteString
   } deriving (Show)
 
@@ -84,14 +85,15 @@ parseLine defaultHostname = {-# SCC "parse" #-}
                              (Just <$> num)
                     space
                     char '"'
-                    referrer <- {-# SCC "referrer" #-} takeTill (== '"')
+                    referer <- {-# SCC "referer" #-} takeTill (== '"')
+                    -- TODO: was defaultHostname?
                     char '"'
                     space
                     char '"'
                     userAgent <- {-# SCC "userAgent" #-} takeTill (== '"')
                     char '"'
                     eol
-                    return $ {-# SCC "Request" #-} Request method code date time path host mSize userAgent
+                    return $ {-# SCC "Request" #-} Request method code date time path host mSize referer userAgent
           space = char ' '
           word = takeTill (== ' ')
           num = let loop !n =
@@ -146,6 +148,7 @@ reqKey req = Key
              (reqDate req)
              (reqHost req)
              (reqUserAgent req)
+             (reqReferer req)
 
 group :: [Request] -> [[Request]]
 group [] = []
@@ -196,10 +199,12 @@ writeReqs db token reqs =
                          Just (Right value)
                            | vToken value == token ->
                              -- Was modified during this session, add:
-                             value { vSize = vSize value + reqsSize }
+                             value { vCount = vCount value + 1,
+                                     vSize = vSize value + reqsSize }
                          _ ->
                            -- First time seen
-                           Value { vSize = reqsSize,
+                           Value { vCount = 1,
+                                   vSize = reqsSize,
                                    vToken = token }
        DB.put db def key $ convert $ newValue
        return 1

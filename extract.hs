@@ -75,7 +75,7 @@ aggregateStats =
                               (BC.ByteString, BC.ByteString, Double)
            aggregateByPath =
                foldAggregate 
-               (\(_, !downloads, !geo, !uas) (!path, !day, hosts_uas) ->
+               (\(_, !downloads, !geo, !uas, !referers) (!path, !day, hosts_uas) ->
                 do fileSize <- liftIO $ getFileSize refFileSizes path
                    let -- | Limit to max. 1 file size by (host, ua) per day
                        hosts_uas' :: Map.HashMap (BC.ByteString, BC.ByteString) Double
@@ -134,9 +134,11 @@ aggregateStats =
                    return (path,
                            Map.insertWith (+) day dayDownloads downloads,
                            Map.insertWith (Map.unionWith (+)) day geo' geo,
-                           Map.insertWith (Map.unionWith (+)) day uas' uas)
-               ) (undefined, Map.empty, Map.empty, Map.empty) $
-               \(path, downloads, geo, uas) ->
+                           Map.insertWith (Map.unionWith (+)) day uas' uas,
+                           Map.insertWith (+) referer referers
+                          )
+               ) (undefined, Map.empty, Map.empty, Map.empty, Map.empty) $
+               \(path, downloads, geo, uas, referers) ->
                    do let totalDownloads =
                               sum $ Map.elems downloads
                           jsonName = hex $ MD5.hash path
@@ -145,7 +147,8 @@ aggregateStats =
                       liftIO $ LBC.writeFile jsonPath $ JSON.encode $ JSON.object [
                                         "downloads" .= mapToObject downloads,
                                         "geo" .= mapToObject geo,
-                                        "user_agents" .= mapToObject uas
+                                        "user_agents" .= mapToObject uas,
+                                        "referers" .= mapToObject referers
                                        ]
                       return (path, jsonName, totalDownloads)
                       

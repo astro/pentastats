@@ -5,7 +5,7 @@ import Control.Applicative
 import qualified Data.ByteString.Char8 as BC
 import Data.Convertible
 import Data.List
-import Data.Char (isDigit, ord)
+import Data.Char (isDigit, isSpace, ord)
 import Data.Hashable
 
 padLeft :: [a] -> Int -> [a] -> [a]
@@ -91,20 +91,27 @@ data Key = Key {
       kPath :: BC.ByteString,
       kDate :: Date,
       kHost :: BC.ByteString,
-      kUserAgent :: BC.ByteString
+      kUserAgent :: BC.ByteString,
+      kReferer :: BC.ByteString
     } deriving (Show, Eq, Ord)
            
 instance Convertible BC.ByteString Key where
     safeConvert b =
         case BC.lines b of
           path : date : host : rest ->
-              let userAgent = case rest of
-                                [userAgent'] -> userAgent'
-                                _ -> BC.empty
+              let userAgent =
+                    case rest of
+                      userAgent' : _ -> userAgent'
+                      _ -> BC.empty
+                  referer =
+                    case rest of
+                      _ : referer' : _ -> referer'
+                      _ -> BC.empty
               in Key path <$>
                  safeConvert date <*>
                  pure host <*>
-                 pure userAgent
+                 pure userAgent <*>
+                 pure referer
           _ ->
               fail $ "Invalid key: " ++ show b
 
@@ -118,6 +125,7 @@ instance Convertible Key BC.ByteString where
                               kUserAgent key]
 
 data Value = Value {
+      vCount :: Int,
       vSize :: Int,
       vToken :: BC.ByteString
     } deriving (Show, Eq)
@@ -130,15 +138,34 @@ instance Ord Value where
 
 instance Convertible BC.ByteString Value where
     safeConvert b =
-        let (b', b'') = BC.break (== ' ') b
-        in case (BC.head b'', readInt $ BC.unpack b') of
-             (' ', Just size) -> Right $ Value (max 0 size) $ BC.tail b''
-             (_, _) -> fail "Invalid value"
+        case readNumbers b of
+          ([count, size], token) ->
+            Right $
+            Value (max 1 count) (max 0 size) token
+          ([size], token) ->
+            Right $
+            Value 1 (max 0 size) token
+          _ -> fail $ "Invalid value: " ++ show b
+
+      where f :: Int -> BC.ByteString -> Either ConvertError Int
+            f min b = max min <$>
+                      maybe (fail "Invalid number") return
+                      (readInt $ BC.unpack b)
+
+            readNumbers :: BC.ByteString -> ([Int], BC.ByteString)
+            readNumbers b =
+              case BC.break (not . isDigit) b of
+                (n, _) | BC.null n -> ([], b)
+                (n, rest) ->
+                  let Just n' = readInt $ BC.unpack n
+                      rest' = BC.takeWhile isSpace rest
+                      (ns, rest'') = readNumbers rest'
+                  in (n' : ns, rest'')
 
 instance Convertible Value BC.ByteString where
-    safeConvert (Value size token) =
+    safeConvert (Value count size token) =
         Right $
-        BC.concat [BC.pack $ show size,
-                   BC.singleton ' ',
-                   token
-                  ]
+        BC.unwords [BC.pack $ show count,
+                    BC.pack $ show size,
+                    token
+                   ]
