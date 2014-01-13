@@ -70,6 +70,20 @@
 	     class="chart"
 	     chart-container="chart.user_agents">
 	</div>
+
+        <h3>Referers</h3>
+        <div ng-hide="loading"
+             class="referers"
+             ng-repeat="g1 in referers">
+          <h4>{{g1.ext}}</h4>
+          <article ng-repeat="g2 in g1.hosts">
+            <h5 ng-click="g2.expanded = !g2.expanded">{{g2.host}} ({{g2.total}})</h5>
+            <ul ng-show="g2.expanded">
+              <li ng-repeat="g3 in g2.paths">
+                <a href="{{g3.url}}">{{g3.url}}</a> ({{g3.count}})
+              </li>
+          </article>
+        </div>
       </div>
     </section>
 

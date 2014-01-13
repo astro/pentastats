@@ -71,3 +71,19 @@ section h3 {
     padding: 0;
     height: 2em;
 }
+
+.referers h4 {
+    margin: 0.5em 0;
+    text-transform: capitalize;
+}
+.referers h5 {
+    margin: 0;
+    line-height: 1.1em;
+    cursor: pointer;
+}
+.referers ul {
+    padding-left: 1em;
+    margin: 0 0 0.2em;
+    list-style-type: none;
+    font-size: 80%;
+}

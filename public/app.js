@@ -258,7 +258,8 @@ app.controller('GraphsController', function($scope, $rootScope, $location, $http
 	var datas = {
 	    ext: {},
 	    user_agents: {},
-	    geo: {}
+	    geo: {},
+            referersByExtensions: {}
 	};
 	g.forEach(function(path) {
 	    $http({
@@ -299,8 +300,62 @@ app.controller('GraphsController', function($scope, $rootScope, $location, $http
 		$scope.chart = {
 		    ext: dataToChart(datas.ext),
 		    geo: dataToChart(datas.geo),
-		    user_agents: dataToChart(datas.user_agents),
+		    user_agents: dataToChart(datas.user_agents)
 		};
+
+                var refGroups = datas.referersByExtensions[path.ext] = {};
+                for(var url in res.referers) {
+                    var count = res.referers[url];
+                    var host = "?", m;
+                    if ((m = url.match(/:\/\/(.+?)\//)))
+                        host = m[1];
+                    if (!refGroups.hasOwnProperty(host))
+                        refGroups[host] = { total: 0, urls: {} };
+                    refGroups[host].total += count;
+                    if (!refGroups[host].urls.hasOwnProperty(url))
+                        refGroups[host].urls[url] = 0;
+                    refGroups[host].urls[url] += count;
+                }
+
+                $scope.referers = Object.keys(datas.referersByExtensions).sort(function(ext1, ext2) {
+                    if (ext1 < ext2)
+                        return -1;
+                    else if (ext1 > ext2)
+                        return 1;
+                    else
+                        return 0;
+                }).map(function(ext) {
+                    var refGroups = datas.referersByExtensions[ext];
+                    return {
+                        ext: ext,
+                        hosts: Object.keys(refGroups).map(function(host) {
+                            return {
+                                host: host,
+                                total: refGroups[host].total,
+                                paths: Object.keys(refGroups[host].urls).map(function(url) {
+                                    return {
+                                        url: url,
+                                        count: refGroups[host].urls[url]
+                                    };
+                                }).sort(function(p1, p2) {
+                                    if (p1.count > p2.count)
+                                        return -1;
+                                    else if (p1.count < p2.count)
+                                        return 1;
+                                    else
+                                        return 0;
+                                })
+                            };
+                        }).sort(function(h1, h2) {
+                            if (h1.total > h2.total)
+                                return -1;
+                            else if (h1.total < h2.total)
+                                return 1;
+                            else
+                                return 0;
+                        })
+                    };
+                });
 	    });
 	    // TODO: http error handling
 	});
