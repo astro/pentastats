@@ -122,7 +122,8 @@ instance Convertible Key BC.ByteString where
                   BC.unlines [kPath key,
                               date,
                               kHost key,
-                              kUserAgent key]
+                              kUserAgent key,
+                              kReferer key]
 
 data Value = Value {
       vCount :: Int,

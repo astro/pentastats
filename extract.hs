@@ -34,12 +34,13 @@ import Aggregate
 dataPath :: FilePath
 dataPath = "public/data/"
 
-mapToObject :: (Show k, JSON.ToJSON j) => Map.HashMap k j -> JSON.Value
-mapToObject = JSON.object .
-              map (\(k, v) ->
-                       T.pack (show k) .= v
-                  ) .
-              Map.toList
+mapToObject :: JSON.ToJSON j => (k -> String) -> Map.HashMap k j -> JSON.Value
+mapToObject show =
+  JSON.object .
+  map (\(k, v) ->
+        T.pack (show k) .= v
+      ) .
+  Map.toList
 
 aggregateStats :: ResourceT IO (Aggregate (Key, Value) (ResourceT IO) ())
 aggregateStats = 
@@ -55,27 +56,34 @@ aggregateStats =
        let aggregateByDay :: Aggregate 
                              (Key, Value)
                              (ResourceT IO) 
-                             (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Int)
+                             (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Int, Map.HashMap BC.ByteString Int)
            aggregateByDay =
                foldAggregate 
-               (\(_, _, !hosts_uas) (k, v) ->
+               (\(_, _, !hosts_uas, !referers) (k, v) ->
                     do let path = kPath k
                            day = kDate k
                            host_ua = (kHost k, kUserAgent k)
                            size = vSize v
+                           referer = kReferer k
+                           referers'
+                             | referer == "" || referer == "-" =
+                               referers
+                             | otherwise =
+                               Map.insertWith (+) referer 1 referers
                        return 
                            (path, day, 
-                            Map.insertWith (+) host_ua size hosts_uas
+                            Map.insertWith (+) host_ua size hosts_uas,
+                            referers'
                            )
-               ) (undefined, undefined, Map.empty) return
+               ) (undefined, undefined, Map.empty, Map.empty) return
                
            aggregateByPath :: Aggregate 
-                              (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Int)
+                              (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Int, Map.HashMap BC.ByteString Int)
                               (ResourceT IO) 
                               (BC.ByteString, BC.ByteString, Double)
            aggregateByPath =
                foldAggregate 
-               (\(_, !downloads, !geo, !uas, !referers) (!path, !day, hosts_uas) ->
+               (\(_, !downloads, !geo, !uas, !referers) (!path, !day, hosts_uas, day_referers) ->
                 do fileSize <- liftIO $ getFileSize refFileSizes path
                    let -- | Limit to max. 1 file size by (host, ua) per day
                        hosts_uas' :: Map.HashMap (BC.ByteString, BC.ByteString) Double
@@ -135,7 +143,7 @@ aggregateStats =
                            Map.insertWith (+) day dayDownloads downloads,
                            Map.insertWith (Map.unionWith (+)) day geo' geo,
                            Map.insertWith (Map.unionWith (+)) day uas' uas,
-                           Map.insertWith (+) referer referers
+                           Map.unionWith (+) referers day_referers
                           )
                ) (undefined, Map.empty, Map.empty, Map.empty, Map.empty) $
                \(path, downloads, geo, uas, referers) ->
@@ -145,10 +153,10 @@ aggregateStats =
                           jsonPath = dataPath ++ BC.unpack jsonName ++ ".json"
                       liftIO $ putStrLn $ BC.unpack path
                       liftIO $ LBC.writeFile jsonPath $ JSON.encode $ JSON.object [
-                                        "downloads" .= mapToObject downloads,
-                                        "geo" .= mapToObject geo,
-                                        "user_agents" .= mapToObject uas,
-                                        "referers" .= mapToObject referers
+                                        "downloads" .= mapToObject show downloads,
+                                        "geo" .= mapToObject show geo,
+                                        "user_agents" .= mapToObject show uas,
+                                        "referers" .= mapToObject BC.unpack referers
                                        ]
                       return (path, jsonName, totalDownloads)
                       
