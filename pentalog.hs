@@ -34,7 +34,7 @@ data Request = Request {
      reqTime :: !DayTime,
      reqPath :: !BC.ByteString, 
      reqHost :: !BC.ByteString, 
-     reqSize :: !(Maybe Int),
+     reqSize :: !(Maybe Integer),
      reqReferer :: !BC.ByteString,
      reqUserAgent :: !BC.ByteString
   } deriving (Show)
@@ -82,7 +82,7 @@ parseLine defaultHostname = {-# SCC "parse" #-}
                     space
                     mSize <- {-# SCC "wordSize" #-} 
                              (pure Nothing <* char '-') <|>
-                             (Just <$> num)
+                             (Just <$> fromIntegral <$> num)
                     space
                     char '"'
                     referer <- {-# SCC "referer" #-} takeTill (== '"')
@@ -101,7 +101,8 @@ parseLine defaultHostname = {-# SCC "parse" #-}
                          case mC of
                            Just c
                              | c >= '0' && c <= '9' ->
-                               anyChar *> loop (n * 10 + ord c - ord '0')
+                               let n' = n * 10 + fromIntegral (ord c - ord '0')
+                               in anyChar *> loop n'
                            _ ->
                              return n
                 in loop 0
@@ -190,7 +191,7 @@ normalizePaths = map normalizePath'
                                          b'
 
 -- Returns amount of keys written
-writeReqs :: DB.DB -> BC.ByteString -> [Request] -> ResourceT IO Int
+writeReqs :: DB.DB -> BC.ByteString -> [Request] -> ResourceT IO Integer
 writeReqs db token reqs =
     do let key = convert $ reqKey $ head reqs
        mOldValue <- (safeConvert <$>) <$> DB.get db def key
@@ -229,12 +230,12 @@ main' defaultHostname =
            parseFile defaultHostname <$> lift LBC.getContents >>=
            foldM 
            (\(!lines, !records, !bytes) reqs ->
-                do let lines' = length reqs
+                do let lines' = fromIntegral $ length reqs
                        bytes' = sum $ map (fromMaybe 0 . reqSize) reqs
                    --liftIO $ putStrLn $ "reqs: " ++ show reqs
                    records' <- writeReqs db token reqs
                    return (lines + lines', records + records', bytes + bytes')
-           ) (0 :: Int, 0 :: Int, 0 :: Int) .
+           ) (0 :: Integer, 0 :: Integer, 0 :: Integer) .
            group .
            normalizePaths .
            filter (\req ->

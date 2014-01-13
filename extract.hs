@@ -56,7 +56,7 @@ aggregateStats =
        let aggregateByDay :: Aggregate 
                              (Key, Value)
                              (ResourceT IO) 
-                             (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Int, Map.HashMap BC.ByteString Int)
+                             (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Integer, Map.HashMap BC.ByteString Integer)
            aggregateByDay =
                foldAggregate 
                (\(_, _, !hosts_uas, !referers) (k, v) ->
@@ -78,7 +78,7 @@ aggregateStats =
                ) (undefined, undefined, Map.empty, Map.empty) return
                
            aggregateByPath :: Aggregate 
-                              (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Int, Map.HashMap BC.ByteString Int)
+                              (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Integer, Map.HashMap BC.ByteString Integer)
                               (ResourceT IO) 
                               (BC.ByteString, BC.ByteString, Double)
            aggregateByPath =
@@ -189,7 +189,7 @@ saveIndex :: JSON.ToJSON json =>
 saveIndex = 
     LBC.writeFile (dataPath ++ "index.json") . JSON.encode
 
-fetchFileSize :: BC.ByteString -> IO (Maybe Int)
+fetchFileSize :: BC.ByteString -> IO (Maybe Integer)
 fetchFileSize path
     | not (':' `BC.elem` path) =
         return Nothing
@@ -209,7 +209,7 @@ fetchFileSize path
 sizesFile :: FilePath
 sizesFile = "sizes.json"
 
-type FileSizes = Map.HashMap BC.ByteString (Maybe Int)
+type FileSizes = Map.HashMap BC.ByteString (Maybe Integer)
 
 loadFileSizes :: IO (IORef FileSizes)
 loadFileSizes = catch loadSizes (const $ return Map.empty :: SomeException -> IO FileSizes) >>=
@@ -227,7 +227,7 @@ saveFileSizes refFileSizes =
     readIORef refFileSizes >>=
     LBC.writeFile sizesFile . JSON.encode
         
-getFileSize :: IORef FileSizes -> BC.ByteString -> IO Int
+getFileSize :: IORef FileSizes -> BC.ByteString -> IO Integer
 getFileSize refFileSizes path =
     do fileSizes <- readIORef refFileSizes
        mSize <- case path `Map.lookup` fileSizes of

@@ -13,14 +13,14 @@ padLeft xs l padding
     | length xs >= l = xs
     | otherwise = padLeft (padding ++ xs) l padding
 
-readInt :: String -> Maybe Int
+readInt :: Num a => String -> Maybe a
 readInt ('-':s) = (0 -) <$> readInt s
 readInt s = readInt' 0 s
 
-readInt' :: Int -> String -> Maybe Int
+readInt' :: Num a => a -> String -> Maybe a
 readInt' _ "" = Nothing
 readInt' r (x : xs)
-    | isDigit x = let i = ord x - ord '0'
+    | isDigit x = let i = fromIntegral $ ord x - ord '0'
                       i' = r * 10 + i
                   in seq i' $
                      case xs of
@@ -126,8 +126,8 @@ instance Convertible Key BC.ByteString where
                               kReferer key]
 
 data Value = Value {
-      vCount :: Int,
-      vSize :: Int,
+      vCount :: Integer,
+      vSize :: Integer,
       vToken :: BC.ByteString
     } deriving (Show, Eq)
 
@@ -148,18 +148,15 @@ instance Convertible BC.ByteString Value where
             Value 1 (max 0 size) token
           _ -> fail $ "Invalid value: " ++ show b
 
-      where f :: Int -> BC.ByteString -> Either ConvertError Int
-            f min b = max min <$>
-                      maybe (fail "Invalid number") return
-                      (readInt $ BC.unpack b)
-
-            readNumbers :: BC.ByteString -> ([Int], BC.ByteString)
+      where readNumbers :: BC.ByteString -> ([Integer], BC.ByteString)
             readNumbers b =
               case BC.break (not . isDigit) b of
                 (n, _) | BC.null n -> ([], b)
                 (n, rest) ->
                   let Just n' = readInt $ BC.unpack n
-                      rest' = BC.takeWhile isSpace rest
+                      rest' = BC.takeWhile (\c ->
+                                             isSpace c || c == '-'
+                                           ) rest
                       (ns, rest'') = readNumbers rest'
                   in (n' : ns, rest'')
 
