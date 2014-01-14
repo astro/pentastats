@@ -76,6 +76,9 @@ section h3 {
     display: inline-block;
     vertical-align: top;
     margin: 0 2em 1em;
+    width: 14em;
+    overflow: hidden;
+    white-space: nowrap;
 }
 .referers h4 {
     margin: 0.5em 0;

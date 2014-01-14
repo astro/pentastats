@@ -311,7 +311,7 @@ app.controller('GraphsController', function($scope, $rootScope, $location, $http
                         var domainParts = m[1].split(".");
                         host = (domainParts.length > 2) ?
                             domainParts[domainParts.length - 2] + "." + domainParts[domainParts.length - 1] :
-                            host;
+                            m[1];
                     }
                     if (!refGroups.hasOwnProperty(host))
                         refGroups[host] = { total: 0, urls: {} };
