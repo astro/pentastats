@@ -307,8 +307,12 @@ app.controller('GraphsController', function($scope, $rootScope, $location, $http
                 for(var url in res.referers) {
                     var count = res.referers[url];
                     var host = "?", m;
-                    if ((m = url.match(/:\/\/(.+?)\//)))
-                        host = m[1];
+                    if ((m = url.match(/:\/\/(.+?)\//))) {
+                        var domainParts = m[1].split(".");
+                        host = (domainParts.length > 2) ?
+                            domainParts[domainParts.length - 2] + "." + domainParts[domainParts.length - 1] :
+                            host;
+                    }
                     if (!refGroups.hasOwnProperty(host))
                         refGroups[host] = { total: 0, urls: {} };
                     refGroups[host].total += count;

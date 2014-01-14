@@ -72,6 +72,11 @@ section h3 {
     height: 2em;
 }
 
+.referers {
+    display: inline-block;
+    vertical-align: top;
+    margin: 0 2em 1em;
+}
 .referers h4 {
     margin: 0.5em 0;
     text-transform: capitalize;
