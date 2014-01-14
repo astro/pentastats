@@ -151,12 +151,17 @@ instance Convertible BC.ByteString Value where
       where readNumbers :: BC.ByteString -> ([Integer], BC.ByteString)
             readNumbers b =
               case BC.break (not . isDigit) b of
-                (n, _) | BC.null n -> ([], b)
+                (n, rest) | BC.null n &&
+                            BC.length rest > 0 &&
+                            BC.head rest == '-' ->
+                  let rest' = BC.tail rest
+                      ((n':ns), rest'') = readNumbers rest'
+                  in (-n' : ns, rest'')
+                (n, _) | BC.null n ->
+                  ([], b)
                 (n, rest) ->
                   let Just n' = readInt $ BC.unpack n
-                      rest' = BC.takeWhile (\c ->
-                                             isSpace c || c == '-'
-                                           ) rest
+                      rest' = BC.takeWhile isSpace rest
                       (ns, rest'') = readNumbers rest'
                   in (n' : ns, rest'')
 
