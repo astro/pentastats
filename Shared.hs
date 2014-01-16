@@ -161,7 +161,7 @@ instance Convertible BC.ByteString Value where
                   ([], b)
                 (n, rest) ->
                   let Just n' = readInt $ BC.unpack n
-                      rest' = BC.takeWhile isSpace rest
+                      rest' = BC.dropWhile isSpace rest
                       (ns, rest'') = readNumbers rest'
                   in (n' : ns, rest'')
 
