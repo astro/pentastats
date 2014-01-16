@@ -241,7 +241,7 @@ main' defaultHostname =
            filter (\req ->
                        reqMethod req == "GET" &&
                        reqCode req >= 200 && 
-                       reqCode req < 300 
+                       reqCode req < 400 
                   )
        lift $ putStrLn $ "Processed " ++ show lines ++ 
          " lines into " ++ show records ++ 
