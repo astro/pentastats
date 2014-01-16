@@ -151,7 +151,7 @@ aggregateStats =
                               sum $ Map.elems downloads
                           jsonName = hex $ MD5.hash path
                           jsonPath = dataPath ++ BC.unpack jsonName ++ ".json"
-                      liftIO $ putStrLn $ BC.unpack path
+                      liftIO $ putStrLn $ BC.unpack path ++ " (" ++ show totalDownloads ++ ")"
                       liftIO $ LBC.writeFile jsonPath $ JSON.encode $ JSON.object [
                                         "downloads" .= mapToObject show downloads,
                                         "geo" .= mapToObject show geo,
