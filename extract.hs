@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns, OverloadedStrings, ScopedTypeVariables #-}
+import Data.Monoid
 import Control.Monad
 import Control.Applicative
 import Data.Default (def)
@@ -24,6 +25,7 @@ import Data.Hex
 import qualified Data.Geolocation.GeoIP as Geo
 import Data.IORef
 import Data.List (foldl')
+import Data.Attoparsec.Number (Number(I, D))
 
 import Shared
 import SourceIter
@@ -33,6 +35,39 @@ import Aggregate
 
 dataPath :: FilePath
 dataPath = "public/data/"
+
+
+data DownloadsMetric = DownloadsByCount DownloadsCount
+                     | DownloadsBySize Double
+    deriving (Show, Eq)
+
+instance Monoid DownloadsMetric where
+  mempty = DownloadsByCount 0
+  (DownloadsByCount c) `mappend` (DownloadsByCount c') = DownloadsByCount $ c + c'
+  m `mappend` m' = let c = coerce m
+                       c' = coerce m'
+                       coerce (DownloadsByCount (DownloadsCount c)) = fromIntegral c
+                       coerce (DownloadsBySize c) = c
+                   in DownloadsBySize $ c + c'
+
+instance JSON.ToJSON DownloadsMetric where
+  toJSON m = JSON.Number $
+             case m of
+               DownloadsByCount (DownloadsCount c) -> I c
+               DownloadsBySize c -> D c
+
+toMetric :: Maybe Integer -> Value -> DownloadsMetric
+toMetric mFileSize value
+  | fileSize <= 0 =
+    DownloadsByCount $ vCount value
+  | otherwise =
+    let DownloadsSize size = vSize value
+    in DownloadsBySize $ fromIntegral size / fromIntegral fileSize
+  where fileSize = fromMaybe 0 mFileSize
+
+limitMetric :: DownloadsMetric -> DownloadsMetric
+limitMetric (DownloadsByCount count) = DownloadsByCount $ min 1 count
+limitMetric (DownloadsBySize count) = DownloadsBySize $ min 1 count
 
 mapToObject :: JSON.ToJSON j => (k -> String) -> Map.HashMap k j -> JSON.Value
 mapToObject show =
@@ -56,14 +91,13 @@ aggregateStats =
        let aggregateByDay :: Aggregate 
                              (Key, Value)
                              (ResourceT IO) 
-                             (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Integer, Map.HashMap BC.ByteString Integer)
+                             (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Value, Map.HashMap BC.ByteString Integer)
            aggregateByDay =
                foldAggregate 
                (\(_, _, !hosts_uas, !referers) (k, v) ->
                     do let path = kPath k
                            day = kDate k
                            host_ua = (kHost k, kUserAgent k)
-                           size = vSize v
                            referer = kReferer k
                            referers'
                              | referer == "" || referer == "-" =
@@ -72,28 +106,26 @@ aggregateStats =
                                Map.insertWith (+) referer 1 referers
                        return 
                            (path, day, 
-                            Map.insertWith (+) host_ua size hosts_uas,
+                            Map.insertWith mappend host_ua v hosts_uas,
                             referers'
                            )
                ) (undefined, undefined, Map.empty, Map.empty) return
                
            aggregateByPath :: Aggregate 
-                              (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Integer, Map.HashMap BC.ByteString Integer)
+                              (BC.ByteString, Date, Map.HashMap (BC.ByteString, BC.ByteString) Value, Map.HashMap BC.ByteString Integer)
                               (ResourceT IO) 
-                              (BC.ByteString, BC.ByteString, Double)
+                              (BC.ByteString, BC.ByteString, DownloadsMetric)
            aggregateByPath =
                foldAggregate 
                (\(_, !downloads, !geo, !uas, !referers) (!path, !day, hosts_uas, day_referers) ->
-                do fileSize <- liftIO $ getFileSize refFileSizes path
+                do mFileSize <- liftIO $ getFileSize refFileSizes path
                    let -- | Limit to max. 1 file size by (host, ua) per day
-                       hosts_uas' :: Map.HashMap (BC.ByteString, BC.ByteString) Double
+                       hosts_uas' :: Map.HashMap (BC.ByteString, BC.ByteString) DownloadsMetric
                        hosts_uas' =
-                           Map.map (min 1 .
-                                    (/ (fromIntegral fileSize)) .
-                                    fromIntegral) hosts_uas
-                       dayDownloads =
-                           sum $
-                           snd `map` Map.toList hosts_uas'
+                           Map.map (limitMetric . toMetric mFileSize) hosts_uas
+                       dayMetric =
+                           mconcat $
+                           Map.elems hosts_uas'
 
                    hostCountries <- 
                        foldM (\(!hostCountries) host ->
@@ -129,10 +161,10 @@ aggregateStats =
                            (\(!geo', !uas') ((host, ua), hostUaDownloads) ->
                                 let Just country = host `Map.lookup` hostCountries
                                     Just ua' = ua `Map.lookup` uaNames
-                                in  (Map.insertWith (+) country hostUaDownloads geo',
-                                     Map.insertWith (+) ua' hostUaDownloads uas')
-                           ) (Map.empty :: Map.HashMap T.Text Double,
-                              Map.empty :: Map.HashMap T.Text Double) $
+                                in  (Map.insertWith mappend country hostUaDownloads geo',
+                                     Map.insertWith mappend ua' hostUaDownloads uas')
+                           ) (Map.empty :: Map.HashMap T.Text DownloadsMetric,
+                              Map.empty :: Map.HashMap T.Text DownloadsMetric) $
                            Map.toList hosts_uas'
                    -- liftIO $ putStrLn $
                    --            "day " ++ show day ++
@@ -140,15 +172,15 @@ aggregateStats =
                    --            "\tgeo: " ++ show (Map.size geo') ++
                    --            "\tuas: " ++ show (Map.size uas')
                    return (path,
-                           Map.insertWith (+) day dayDownloads downloads,
-                           Map.insertWith (Map.unionWith (+)) day geo' geo,
-                           Map.insertWith (Map.unionWith (+)) day uas' uas,
+                           Map.insertWith mappend day dayMetric downloads,
+                           Map.insertWith (Map.unionWith mappend) day geo' geo,
+                           Map.insertWith (Map.unionWith mappend) day uas' uas,
                            Map.unionWith (+) referers day_referers
                           )
                ) (undefined, Map.empty, Map.empty, Map.empty, Map.empty) $
                \(path, downloads, geo, uas, referers) ->
                    do let totalDownloads =
-                              sum $ Map.elems downloads
+                              mconcat $ Map.elems downloads
                           jsonName = hex $ MD5.hash path
                           jsonPath = dataPath ++ BC.unpack jsonName ++ ".json"
                       liftIO $ putStrLn $ BC.unpack path ++ " (" ++ show totalDownloads ++ ")"
@@ -160,7 +192,7 @@ aggregateStats =
                                        ]
                       return (path, jsonName, totalDownloads)
                       
-           aggregateAll :: Aggregate (BC.ByteString, BC.ByteString, Double) (ResourceT IO) ()
+           aggregateAll :: Aggregate (BC.ByteString, BC.ByteString, DownloadsMetric) (ResourceT IO) ()
            aggregateAll =
                foldAggregate 
                (\index (!path, !jsonName, !totalDownloads) ->
@@ -227,21 +259,18 @@ saveFileSizes refFileSizes =
     readIORef refFileSizes >>=
     LBC.writeFile sizesFile . JSON.encode
         
-getFileSize :: IORef FileSizes -> BC.ByteString -> IO Integer
+getFileSize :: IORef FileSizes -> BC.ByteString -> IO (Maybe Integer)
 getFileSize refFileSizes path =
     do fileSizes <- readIORef refFileSizes
-       mSize <- case path `Map.lookup` fileSizes of
-                  Just mSize -> 
-                      return mSize
-                  Nothing ->
-                      do mSize <- fetchFileSize path
-                         writeIORef refFileSizes $
-                                    Map.insert path mSize fileSizes
-                         return mSize
+       case path `Map.lookup` fileSizes of
+         Just mSize -> 
+           return mSize
+         Nothing ->
+           do mSize <- fetchFileSize path
+              writeIORef refFileSizes $
+                Map.insert path mSize fileSizes
+              return mSize
                          
-       return $ fromMaybe fallbackSize mSize
-                      
-    where fallbackSize = 100 * 1024 * 1024  -- 100 MB
 
 
 main :: IO ()

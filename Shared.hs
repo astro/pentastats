@@ -1,12 +1,15 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE MultiParamTypeClasses, GeneralizedNewtypeDeriving #-}
 module Shared where
 
+import Data.Monoid
 import Control.Applicative
 import qualified Data.ByteString.Char8 as BC
 import Data.Convertible
 import Data.List
 import Data.Char (isDigit, isSpace, ord)
 import Data.Hashable
+
+-- | Utilities
 
 padLeft :: [a] -> Int -> [a] -> [a]
 padLeft xs l padding
@@ -27,6 +30,8 @@ readInt' r (x : xs)
                        "" -> Just i'
                        _:_ -> readInt' i' xs
     | otherwise = Nothing
+
+-- | Date
 
 data Date = Date !Int !Int !Int
             deriving (Ord, Eq)
@@ -57,6 +62,8 @@ instance Convertible Date BC.ByteString where
 instance Hashable Date where
     hashWithSalt salt (Date y m d) = hashWithSalt salt (y, m, d)
 
+-- | DayTime
+
 data DayTime = DayTime Int Int Int
              deriving (Ord, Eq)
 
@@ -86,6 +93,8 @@ instance Convertible BC.ByteString DayTime where
 instance Convertible DayTime BC.ByteString where
     safeConvert = Right . BC.pack . show
 
+
+-- | Key
 
 data Key = Key {
       kPath :: BC.ByteString,
@@ -125,9 +134,16 @@ instance Convertible Key BC.ByteString where
                               kUserAgent key,
                               kReferer key]
 
+-- | Value
+
+newtype DownloadsCount = DownloadsCount Integer
+    deriving (Show, Eq, Ord, Num)
+newtype DownloadsSize = DownloadsSize Integer
+    deriving (Show, Eq, Ord, Num)
+
 data Value = Value {
-      vCount :: Integer,
-      vSize :: Integer,
+      vCount :: DownloadsCount,
+      vSize :: DownloadsSize,
       vToken :: BC.ByteString
     } deriving (Show, Eq)
 
@@ -137,15 +153,24 @@ instance Ord Value where
           EQ -> vSize v1 `compare` vSize v2
           ordering -> ordering
 
+instance Monoid Value where
+    mempty = Value (DownloadsCount 0) (DownloadsSize 0) BC.empty
+    mappend v v' =
+        Value {
+            vCount = vCount v + vCount v',
+            vSize = vSize v + vSize v',
+            vToken = vToken v'
+        }
+
 instance Convertible BC.ByteString Value where
     safeConvert b =
         case readNumbers b of
           ([count, size], token) ->
             Right $
-            Value (max 1 count) (max 0 size) token
+            Value (DownloadsCount $ max 1 count) (DownloadsSize $ max 0 size) token
           ([size], token) ->
             Right $
-            Value 1 (max 0 size) token
+            Value (DownloadsCount 1) (DownloadsSize $ max 0 size) token
           _ -> fail $ "Invalid value: " ++ show b
 
       where readNumbers :: BC.ByteString -> ([Integer], BC.ByteString)
@@ -166,7 +191,7 @@ instance Convertible BC.ByteString Value where
                   in (n' : ns, rest'')
 
 instance Convertible Value BC.ByteString where
-    safeConvert (Value count size token) =
+    safeConvert (Value (DownloadsCount count) (DownloadsSize size) token) =
         Right $
         BC.unwords [BC.pack $ show count,
                     BC.pack $ show size,

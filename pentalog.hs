@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns, TupleSections, FlexibleInstances, OverloadedStrings #-}
 module Main (main) where
 
+import Data.Monoid
 import Control.Applicative
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as LBC
@@ -194,20 +195,15 @@ normalizePaths = map normalizePath'
 writeReqs :: DB.DB -> BC.ByteString -> [Request] -> ResourceT IO Integer
 writeReqs db token reqs =
     do let key = convert $ reqKey $ head reqs
-       mOldValue <- (safeConvert <$>) <$> DB.get db def key
-       let reqsSize = sum $ map (fromMaybe 0 . reqSize) reqs
-           newValue = case mOldValue of
-                         Just (Right value)
-                           | vToken value == token ->
-                             -- Was modified during this session, add:
-                             value { vCount = vCount value + 1,
-                                     vSize = vSize value + reqsSize }
-                         _ ->
-                           -- First time seen
-                           Value { vCount = 1,
-                                   vSize = reqsSize,
-                                   vToken = token }
-       DB.put db def key $ convert $ newValue
+       mOldValueBin <- DB.get db def key
+       let oldValue = fromMaybe mempty $
+                      do Right oldValue <- safeConvert <$> mOldValueBin
+                         return oldValue
+           reqsSize = sum $ map (fromMaybe 0 . reqSize) reqs
+           newValue = Value { vCount = 1,
+                              vSize = DownloadsSize reqsSize,
+                              vToken = token }
+       DB.put db def key $ convert $ oldValue `mappend` newValue
        return 1
 
 
