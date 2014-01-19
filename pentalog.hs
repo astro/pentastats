@@ -140,8 +140,10 @@ parseFile defaultHostname s
           req : parseFile defaultHostname rest
       Fail rest _ errMsg ->
           trace (errMsg ++ " in " ++ show (LBC.take 32 rest)) $
-          let rest' = LBC.dropWhile (/= '\n') rest
-          in parseFile defaultHostname $ LBC.tail rest'
+          let rest' = LBC.dropWhile (== '\n') $
+                      LBC.dropWhile (/= '\n')
+                      rest
+          in parseFile defaultHostname rest'
 
 
 reqKey :: Request -> Key
