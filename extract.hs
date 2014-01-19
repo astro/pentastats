@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, OverloadedStrings, ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns, OverloadedStrings #-}
 import Data.Monoid
 import Control.Monad
 import Control.Applicative
@@ -17,13 +17,9 @@ import Data.Aeson ((.=))
 import qualified Data.Aeson as JSON
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
-import qualified Network.HTTP as HTTP
-import Control.Exception (catch, SomeException)
-import Network.URI (parseURI)
 import qualified Crypto.Hash.MD5 as MD5
 import Data.Hex
 import qualified Data.Geolocation.GeoIP as Geo
-import Data.IORef
 import Data.List (foldl')
 import Data.Attoparsec.Number (Number(I, D))
 
@@ -31,6 +27,7 @@ import Shared
 import SourceIter
 import UAFilter
 import Aggregate
+import FileSizes
 
 
 dataPath :: FilePath
@@ -221,56 +218,6 @@ saveIndex :: JSON.ToJSON json =>
 saveIndex = 
     LBC.writeFile (dataPath ++ "index.json") . JSON.encode
 
-fetchFileSize :: BC.ByteString -> IO (Maybe Integer)
-fetchFileSize path
-    | not (':' `BC.elem` path) =
-        return Nothing
-    | otherwise =
-        do putStrLn $ "HEAD " ++ BC.unpack path
-           getSize <$> catch (HTTP.simpleHTTP headRequest)
-                       (\(_::SomeException) -> return $ Left undefined)
-    where uri = fromMaybe undefined $
-                parseURI $ 
-                BC.unpack path
-          headRequest :: HTTP.Request BC.ByteString
-          headRequest = HTTP.mkRequest HTTP.HEAD uri
-          getSize (Right rsp) = read <$>
-                                HTTP.findHeader HTTP.HdrContentLength rsp
-          getSize _ = Nothing
-
-sizesFile :: FilePath
-sizesFile = "sizes.json"
-
-type FileSizes = Map.HashMap BC.ByteString (Maybe Integer)
-
-loadFileSizes :: IO (IORef FileSizes)
-loadFileSizes = catch loadSizes (const $ return Map.empty :: SomeException -> IO FileSizes) >>=
-                (\a ->
-                     do print a
-                        return a
-                ) >>=
-                newIORef
-    where loadSizes :: IO FileSizes
-          loadSizes = do Just json <- JSON.decode <$> LBC.readFile sizesFile
-                         return json
-
-saveFileSizes :: IORef FileSizes -> IO ()
-saveFileSizes refFileSizes =
-    readIORef refFileSizes >>=
-    LBC.writeFile sizesFile . JSON.encode
-        
-getFileSize :: IORef FileSizes -> BC.ByteString -> IO (Maybe Integer)
-getFileSize refFileSizes path =
-    do fileSizes <- readIORef refFileSizes
-       case path `Map.lookup` fileSizes of
-         Just mSize -> 
-           return mSize
-         Nothing ->
-           do mSize <- fetchFileSize path
-              writeIORef refFileSizes $
-                Map.insert path mSize fileSizes
-              return mSize
-                         
 
 
 main :: IO ()
