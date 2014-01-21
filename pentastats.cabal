@@ -7,7 +7,7 @@ cabal-version: >= 1.8
 build-type: Simple
 
 executable pentalog
-    ghc-options: -Wall -O2
+    ghc-options: -Wall -O2 -rtsopts
     main-is: pentalog.hs
     build-depends:
         base,
@@ -25,7 +25,7 @@ executable pentalog
         attoparsec
 
 executable extract
-    ghc-options: -Wall -O2
+    ghc-options: -Wall -O2 -rtsopts
     main-is: extract.hs
     build-depends:
         base,
