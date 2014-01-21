@@ -97,11 +97,11 @@ instance Convertible DayTime BC.ByteString where
 -- | Key
 
 data Key = Key {
-      kPath :: BC.ByteString,
-      kDate :: Date,
-      kHost :: BC.ByteString,
-      kUserAgent :: BC.ByteString,
-      kReferer :: BC.ByteString
+      kPath :: !BC.ByteString,
+      kDate :: !Date,
+      kHost :: !BC.ByteString,
+      kUserAgent :: !BC.ByteString,
+      kReferer :: !BC.ByteString
     } deriving (Show, Eq, Ord)
            
 instance Convertible BC.ByteString Key where
@@ -142,9 +142,9 @@ newtype DownloadsSize = DownloadsSize Integer
     deriving (Show, Eq, Ord, Num)
 
 data Value = Value {
-      vCount :: DownloadsCount,
-      vSize :: DownloadsSize,
-      vToken :: BC.ByteString
+      vCount :: !DownloadsCount,
+      vSize :: !DownloadsSize,
+      vToken :: !BC.ByteString
     } deriving (Show, Eq)
 
 instance Ord Value where

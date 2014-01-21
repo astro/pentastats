@@ -34,8 +34,8 @@ dataPath :: FilePath
 dataPath = "public/data/"
 
 
-data DownloadsMetric = DownloadsByCount DownloadsCount
-                     | DownloadsBySize Double
+data DownloadsMetric = DownloadsByCount !DownloadsCount
+                     | DownloadsBySize !Double
     deriving (Show, Eq)
 
 instance Monoid DownloadsMetric where
@@ -74,6 +74,10 @@ mapToObject show =
       ) .
   Map.toList
 
+seqMappend :: Monoid a => a -> a -> a
+seqMappend m m' = let m'' = m `mappend` m'
+                  in m'' `seq` m''
+
 aggregateStats :: ResourceT IO (Aggregate (Key, Value) (ResourceT IO) ())
 aggregateStats = 
     do refFileSizes <- liftIO loadFileSizes
@@ -100,10 +104,10 @@ aggregateStats =
                              | referer == "" || referer == "-" =
                                referers
                              | otherwise =
-                               Map.insertWith (+) referer 1 referers
+                               Map.insertWith (\a b -> let c = a + b in c `seq` c) referer 1 referers
                        return 
                            (path, day, 
-                            Map.insertWith mappend host_ua v hosts_uas,
+                            Map.insertWith seqMappend host_ua v hosts_uas,
                             referers'
                            )
                ) (undefined, undefined, Map.empty, Map.empty) return
@@ -158,20 +162,20 @@ aggregateStats =
                            (\(!geo', !uas') ((host, ua), hostUaDownloads) ->
                                 let Just country = host `Map.lookup` hostCountries
                                     Just ua' = ua `Map.lookup` uaNames
-                                in  (Map.insertWith mappend country hostUaDownloads geo',
-                                     Map.insertWith mappend ua' hostUaDownloads uas')
+                                in  (Map.insertWith seqMappend country hostUaDownloads geo',
+                                     Map.insertWith seqMappend ua' hostUaDownloads uas')
                            ) (Map.empty :: Map.HashMap T.Text DownloadsMetric,
                               Map.empty :: Map.HashMap T.Text DownloadsMetric) $
                            Map.toList hosts_uas'
                    -- liftIO $ putStrLn $
                    --            "day " ++ show day ++
-                   --            "\tdownloads: " ++ show dayDownloads ++
+                   --            "\tdownloads: " ++ show dayMetric ++
                    --            "\tgeo: " ++ show (Map.size geo') ++
                    --            "\tuas: " ++ show (Map.size uas')
                    return (path,
-                           Map.insertWith mappend day dayMetric downloads,
-                           Map.insertWith (Map.unionWith mappend) day geo' geo,
-                           Map.insertWith (Map.unionWith mappend) day uas' uas,
+                           Map.insertWith seqMappend day dayMetric downloads,
+                           Map.insertWith (Map.unionWith seqMappend) day geo' geo,
+                           Map.insertWith (Map.unionWith seqMappend) day uas' uas,
                            Map.unionWith (+) referers day_referers
                           )
                ) (undefined, Map.empty, Map.empty, Map.empty, Map.empty) $
