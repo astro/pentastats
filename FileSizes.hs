@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module FileSizes (loadFileSizes, saveFileSizes, getFileSize) where
 
+import Control.Monad
 import Control.Applicative
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BC
@@ -11,6 +12,7 @@ import Network.URI (parseURI)
 import qualified Data.Aeson as JSON
 import qualified Data.HashMap.Strict as Map
 import Data.IORef
+import System.Timeout (timeout)
 
 
 fetchFileSize :: BC.ByteString -> IO (Maybe Integer)
@@ -19,8 +21,10 @@ fetchFileSize path
         return Nothing
     | otherwise =
         do putStrLn $ "HEAD " ++ BC.unpack path
-           getSize <$> catch (HTTP.simpleHTTP headRequest)
-                       (\(_::SomeException) -> return $ Left undefined)
+           join <$> timeout (httpTimeout * 1000000)
+             (getSize <$> catch (HTTP.simpleHTTP headRequest)
+              (\(_::SomeException) -> return $ Left undefined)
+             )
     where uri = fromMaybe undefined $
                 parseURI $ 
                 BC.unpack path
@@ -29,6 +33,7 @@ fetchFileSize path
           getSize (Right rsp) = read <$>
                                 HTTP.findHeader HTTP.HdrContentLength rsp
           getSize _ = Nothing
+          httpTimeout = 3
 
 sizesFile :: FilePath
 sizesFile = "sizes.json"
